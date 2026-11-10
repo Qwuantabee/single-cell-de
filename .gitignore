@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+
+# downloaded third-party data
+data/*.h5ad
+data/*.h5
+
+# logs; the summary CSVs are kept
+results/*.log
