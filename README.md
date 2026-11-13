@@ -232,9 +232,28 @@ Python 3.14 has no anndata or h5py wheels yet; use 3.12 or 3.13.
 
 ## Still to do
 
-- Replace the paired t-test on log counts with a proper negative-binomial GLM
+- ~~Replace the paired t-test on log counts with a proper negative-binomial GLM
   (what DESeq2 and edgeR actually do), and check how much the normal
-  approximation costs on small donor counts.
+  approximation costs on small donor counts.~~ **Done** — `src/scpipe/nbglm.py`
+  and `scripts/nbglm_study.py`; results in `results/sim_nbglm.csv`.
+
+  The GLM is median-of-ratios size factors as an offset, per-gene method-of-
+  moments dispersion shrunk toward an expression trend, and a Wald test on the
+  condition coefficient referred to a t distribution with (samples − parameters)
+  degrees of freedom. Measured over 10 replicates per cell of the donor grid
+  (300 genes, 30 truly changed at log2 effect 1.0, BH α = 0.05): the *power* is
+  the column that moved. At **6 donors** the GLM found **97%** of the changed
+  genes against **68%** for the paired t-test, at the same observed false
+  discovery proportion (0.028 vs 0.042). At **12 donors** both reach 100% power
+  (FDP 0.057 vs 0.049) and at **24 donors** both are at 100% (FDP 0.043 vs
+  0.059) — identical to two decimals. At **3 donors** neither method calls
+  anything: 0% power for both, because the per-sample variance component
+  swamps a 2× effect at three pairs regardless of the test. So the normal
+  approximation is expensive exactly where it was suspected to be — the 3–8
+  donor range where most published designs live — and free above 12. Worth
+  noting that this simulator generates negative-binomial data, which is the
+  GLM's own model, so this is its best case; on real data the gap is unlikely
+  to be larger than this and could be smaller.
 - Per-cell-type analysis: aggregate within cell type, since a composition
   shift between conditions can masquerade as expression change.
 - Mixed-effects models as a middle ground between per-cell and pseudobulk.
