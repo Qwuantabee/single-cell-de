@@ -85,7 +85,9 @@ def cpm(matrix, log=True, prior_count=1.0):
     prior_count damps the variance of genes with near-zero counts, which
     otherwise dominate any fold-change ranking.
     """
-    lib = matrix.sum(axis=1).to_numpy()[:, None]
+    # .to_numpy() can hand back a read-only view (pandas 3.0 copy-on-write,
+    # and any DataFrame built on a read-only array), so copy before editing.
+    lib = np.array(matrix.sum(axis=1).to_numpy(), dtype=float)[:, None]
     lib[lib == 0] = 1
     out = matrix / lib * 1e6
     if log:
@@ -134,7 +136,7 @@ def size_factors(matrix):
 
 def normalise(matrix, log=True, prior_count=1.0):
     """Divide by median-of-ratios size factors, then optionally log2."""
-    sf = size_factors(matrix).to_numpy()[:, None]
+    sf = np.array(size_factors(matrix).to_numpy(), dtype=float)[:, None]
     sf[sf <= 0] = 1.0
     out = matrix / sf
     if log:
