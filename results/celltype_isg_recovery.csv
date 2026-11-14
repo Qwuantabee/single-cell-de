@@ -1,0 +1,8 @@
+cell_type,n_isg_found,median_isg_rank,sig
+B cells,12,50,563
+CD14+ Monocytes,12,441,2952
+CD4 T cells,12,73,986
+CD8 T cells,12,31,88
+Dendritic cells,12,42,565
+FCGR3A+ Monocytes,12,172,746
+NK cells,12,29,401

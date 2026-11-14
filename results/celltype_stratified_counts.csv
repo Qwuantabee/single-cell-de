@@ -1,0 +1,8 @@
+cell_type,genes_tested,n_donors,sig_within_type_bh,sig_global_bh
+B cells,3804,8,563,661
+CD14+ Monocytes,5364,8,2952,2578
+CD4 T cells,7048,8,986,1191
+CD8 T cells,2081,5,88,187
+Dendritic cells,2078,5,565,551
+FCGR3A+ Monocytes,2673,5,746,717
+NK cells,2436,7,401,459

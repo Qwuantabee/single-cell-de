@@ -154,3 +154,137 @@ def filter_genes(matrix, min_count=10, min_samples=3):
     detected = (matrix >= min_count).sum(axis=0)
     keep = detected >= min_samples
     return matrix.loc[:, keep]
+
+
+def cell_type_composition(adata, cell_type_key="cell_type",
+                          sample_key="donor", condition_key="condition"):
+    """Proportion of each cell type within each (sample, condition) sample.
+
+    This exists to be looked at *before* any per-gene test, because the two
+    questions are different and only one of them is about expression.
+
+    If interferon-beta stimulation, or a disease, changes the mix of cells
+    that are recovered -- more monocytes, fewer B cells, a new activated
+    subset -- then a test that aggregates all cells of a donor together
+    compares a monocyte-heavy sample to a B-cell-heavy one. Every monocyte
+    marker comes out "up" and every B-cell marker "down", with p-values that
+    are perfectly valid for the question "do these two cell mixtures differ"
+    and completely wrong for the question "did any gene's expression
+    change". The false positives are not noise; they are the composition
+    difference, measured accurately and reported as biology.
+
+    Returns (proportions, shift):
+        proportions: samples x cell types, each row summing to 1
+        shift: one row per cell type with the mean proportion in each
+            condition and the log2 ratio between them. A shift of +1 means
+            that type is twice as common in the first condition.
+    """
+    obs = adata.obs
+    tab = pd.crosstab([obs[sample_key], obs[condition_key]],
+                      obs[cell_type_key])
+    proportions = tab.div(tab.sum(axis=1), axis=0)
+
+    conds = proportions.index.get_level_values(1).unique().tolist()
+    if len(conds) != 2:
+        raise ValueError(
+            f"expected 2 conditions for a shift estimate, found {conds}")
+    a, b = conds[0], conds[1]
+    mask = proportions.index.get_level_values(1)
+    mean_a = proportions[mask == a].mean()
+    mean_b = proportions[mask == b].mean()
+
+    eps = 1e-12
+    shift = pd.DataFrame({
+        "mean_prop_a": mean_a,
+        "mean_prop_b": mean_b,
+        "log2_ratio": np.log2((mean_a + eps) / (mean_b + eps)),
+        "n_a": tab[mask == a].sum(),
+        "n_b": tab[mask == b].sum(),
+    })
+    shift.index.name = cell_type_key
+    return proportions, shift
+
+
+def pseudobulk_by_celltype(adata, cell_type_key="cell_type",
+                           sample_key="donor", condition_key="condition",
+                           group_a="stim", group_b="ctrl", min_cells=25,
+                           min_donors=4, min_count=10, min_samples=3,
+                           normalisation="median_ratio", paired=True):
+    """Aggregate within each cell type, then test within each cell type.
+
+    The single all-cells aggregate cannot answer an expression question on
+    data whose cell composition differs between conditions -- see
+    cell_type_composition for why. Splitting by cell type first removes the
+    composition difference from the comparison by construction: within a
+    cell type, condition is the only thing that can differ, so a change in
+    the *mix* of cells has nowhere to show up except in the composition
+    table, where it belongs.
+
+    Cell types with fewer than `min_donors` donors contributing
+    `min_cells` cells to *both* conditions are skipped rather than tested on
+    a handful of donors, and the reason is returned instead of dropped
+    silently.
+
+    Multiple testing: qval is Benjamini-Hochberg within each cell type
+    (the usual per-contrast correction). qval_global is BH across every
+    cell-type x gene test together, which is the honest correction if the
+    claim being made is "this gene changed somewhere".
+
+    Returns (results, composition, skipped):
+        results: long frame indexed by (cell_type, gene)
+        composition: the per-sample proportions that motivated the split
+        skipped: {cell_type: reason}
+    """
+    from .de import _bh, pseudobulk_de
+
+    composition, _ = cell_type_composition(
+        adata, cell_type_key=cell_type_key, sample_key=sample_key,
+        condition_key=condition_key)
+
+    order = adata.obs[cell_type_key].value_counts().index.tolist()
+    frames, skipped = [], {}
+
+    for ct in order:
+        sub = adata[adata.obs[cell_type_key] == ct].copy()
+        tab = pd.crosstab(sub.obs[sample_key], sub.obs[condition_key])
+        if group_a not in tab.columns or group_b not in tab.columns:
+            skipped[ct] = "missing a condition"
+            continue
+        usable = tab[(tab[group_a] >= min_cells)
+                     & (tab[group_b] >= min_cells)].index.tolist()
+        if len(usable) < min_donors:
+            skipped[ct] = (f"{len(usable)} donors with >= {min_cells} cells "
+                           f"in both conditions (< {min_donors})")
+            continue
+        sub = sub[sub.obs[sample_key].isin(usable)].copy()
+        try:
+            res = pseudobulk_de(
+                sub, condition_key, sample_key, group_a, group_b,
+                min_cells=min_cells, paired=paired, min_count=min_count,
+                min_samples=min_samples, normalisation=normalisation)
+        except ValueError as exc:
+            skipped[ct] = str(exc)
+            continue
+        res.insert(0, "cell_type", ct)
+        res.insert(1, "n_donors", len(usable))
+        frames.append(res)
+
+    if not frames:
+        raise ValueError(
+            "no cell type had enough donors to test; skipped: "
+            f"{skipped}")
+
+    results = pd.concat(frames)
+    results.index.name = "gene"
+    results = results.set_index("cell_type", append=True)
+    results = results.reorder_levels(["cell_type", "gene"]).sort_index()
+    results["qval_global"] = _bh(results["pval"].to_numpy())
+    return results, composition, skipped
+
+
+def significant_by_celltype(results, alpha=0.05, column="qval"):
+    """How many genes each cell type calls, using one q-value column."""
+    called = results[results[column] < alpha]
+    per_type = called.groupby(level="cell_type").size()
+    order = results.index.get_level_values("cell_type").unique()
+    return per_type.reindex(order).fillna(0).astype(int)
