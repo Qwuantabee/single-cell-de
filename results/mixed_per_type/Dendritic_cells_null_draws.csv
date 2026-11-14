@@ -1,0 +1,26 @@
+cell_type,balance,draw,is_null,held_out,donors_used,donors_flipped,fp_pseudobulk,fp_mixed,raw_p05_pseudobulk,raw_p05_mixed,fp_pseudobulk_random_all_genes,mixed_boundary_frac,structure_ok
+Dendritic cells,balanced,0,True,patient_1244,patient_101|patient_1015|patient_1256|patient_1488,patient_1015|patient_1256,0,0,0.046,0.046,0.0,0.458,True
+Dendritic cells,balanced,1,True,patient_1488,patient_101|patient_1015|patient_1244|patient_1256,patient_1015|patient_1256,0,0,0.042,0.042,0.0,0.452,True
+Dendritic cells,balanced,2,True,patient_1244,patient_101|patient_1015|patient_1256|patient_1488,patient_1256|patient_1488,0,0,0.04,0.04,0.0,0.49,True
+Dendritic cells,balanced,3,True,patient_1256,patient_101|patient_1015|patient_1244|patient_1488,patient_1015|patient_1244,0,0,0.044,0.05,0.0,0.468,True
+Dendritic cells,balanced,4,True,patient_1015,patient_101|patient_1244|patient_1256|patient_1488,patient_1256|patient_1488,0,0,0.03,0.03,0.0,0.428,True
+Dendritic cells,balanced,5,True,patient_1015,patient_101|patient_1244|patient_1256|patient_1488,patient_1244|patient_1256,0,0,0.042,0.046,0.0,0.414,True
+Dendritic cells,balanced,6,True,patient_101,patient_1015|patient_1244|patient_1256|patient_1488,patient_1244|patient_1488,0,0,0.034,0.036,0.0,0.484,True
+Dendritic cells,balanced,7,True,patient_1256,patient_101|patient_1015|patient_1244|patient_1488,patient_1015|patient_1488,2,2,0.028,0.034,0.0,0.482,True
+Dendritic cells,balanced,8,True,patient_1488,patient_101|patient_1015|patient_1244|patient_1256,patient_1015|patient_1244,0,0,0.056,0.06,0.0,0.45,True
+Dendritic cells,balanced,9,True,patient_1015,patient_101|patient_1244|patient_1256|patient_1488,patient_1244|patient_1488,0,0,0.034,0.036,0.0,0.418,True
+Dendritic cells,balanced,10,True,patient_1244,patient_101|patient_1015|patient_1256|patient_1488,patient_1015|patient_1488,0,0,0.052,0.054,0.0,0.46,True
+Dendritic cells,balanced,11,True,patient_101,patient_1015|patient_1244|patient_1256|patient_1488,patient_1256|patient_1488,0,0,0.04,0.042,0.0,0.458,True
+Dendritic cells,balanced,12,True,patient_1256,patient_101|patient_1015|patient_1244|patient_1488,patient_1244|patient_1488,0,0,0.036,0.038,0.0,0.482,True
+Dendritic cells,balanced,13,True,patient_1488,patient_101|patient_1015|patient_1244|patient_1256,patient_1244|patient_1256,0,0,0.038,0.038,0.0,0.462,True
+Dendritic cells,balanced,14,True,patient_101,patient_1015|patient_1244|patient_1256|patient_1488,patient_1244|patient_1256,0,0,0.04,0.042,0.0,0.462,True
+Dendritic cells,unbalanced,0,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,0,0,0.098,0.1,,0.382,True
+Dendritic cells,unbalanced,1,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_1015|patient_1488,1,1,0.032,0.034,,0.456,True
+Dendritic cells,unbalanced,2,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_101|patient_1015|patient_1244|patient_1256,0,0,0.042,0.048,,0.416,True
+Dendritic cells,unbalanced,3,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_101|patient_1015|patient_1488,0,0,0.034,0.036,,0.43,True
+Dendritic cells,unbalanced,4,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_1015|patient_1488,1,1,0.032,0.034,,0.456,True
+Dendritic cells,unbalanced,5,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_1244|patient_1488,0,0,0.032,0.036,,0.442,True
+Dendritic cells,unbalanced,6,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_101|patient_1015|patient_1244,0,0,0.044,0.046,,0.442,True
+Dendritic cells,unbalanced,7,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_101|patient_1256|patient_1488,0,0,0.04,0.04,,0.44,True
+Dendritic cells,unbalanced,8,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_101|patient_1015,0,0,0.036,0.044,,0.45,True
+Dendritic cells,unbalanced,9,False,,patient_101|patient_1015|patient_1244|patient_1256|patient_1488,patient_101|patient_1244|patient_1256|patient_1488,0,0,0.056,0.064,,0.432,True
