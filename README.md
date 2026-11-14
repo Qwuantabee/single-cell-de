@@ -321,7 +321,7 @@ scripts/
     megakaryocyte_check.py  why megakaryocytes get no expression test (§7)
     make_figures.py         every figure, from results/*.csv
 results/ figures/   the CSVs behind every number; every plot
-tests/              121 tests, including calibration tests that assert the
+tests/              122 tests, including calibration tests that assert the
                     per-cell test fails and stops failing when sample-level
                     variance is removed, and driver tests that pin the
                     seven-type roster and the balanced null
