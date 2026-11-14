@@ -493,6 +493,73 @@ def fig_boundary():
           "results/mixed_vs_others_summary.csv")
 
 
+def fig_plan_space():
+    """Why '200 draws' cannot exist: the balanced plan space is tiny."""
+    swap = _maybe("mixed_null_donor_swap.csv", "scripts/mixed_vs_others.py")
+    if swap is None:
+        return
+    bal = swap[(swap["balance"] == "balanced") & (swap["method"] == "mixed")]
+    cap = None
+    driver = ROOT / "scripts" / "mixed_vs_others.py"
+    if driver.exists():
+        found = re.search(r"^NULL_PERMS\s*=\s*(\d+)", driver.read_text(), re.M)
+        cap = int(found.group(1)) if found else None
+
+    groups = []
+    for used, g in sorted(bal.groupby("n_donors_used"), reverse=True):
+        plans = g["n_plans_available"].unique()
+        draws = g["n_distinct_draws"].unique()
+        paired = g["n_paired_donors"].unique()
+        if len(plans) != 1 or len(draws) != 1 or len(paired) != 1:
+            raise ValueError(f"{used} donors used: types disagree on the plan space")
+        used, plans, draws, paired = int(used), int(plans[0]), int(draws[0]), int(paired[0])
+        holdout = math.comb(paired, used)          # which donors are held out
+        if holdout * math.comb(used, used // 2) // 2 == plans:
+            how = (f"{holdout} x " if holdout > 1 else "") + f"1/2 C({used},{used // 2})"
+        else:
+            how = ""                               # do not explain what we cannot reproduce
+        groups.append({"used": used, "paired": paired, "plans": plans,
+                       "draws": draws, "how": how, "types": list(g["cell_type"])})
+
+    fig, ax = plt.subplots(figsize=(5.5, 4))
+    x = np.arange(len(groups))
+    plans = [g["plans"] for g in groups]
+    ax.bar(x, plans, width=0.55, color="C0", edgecolor="black", linewidth=0.5,
+           label="distinct balanced plans = draws run")
+    for xi, g in zip(x, groups):
+        ax.text(xi, g["plans"] + 4, f"= {g['how']}" if g["how"] else "",
+                ha="center", va="bottom", fontsize=7.5)
+        ax.text(xi, g["plans"] + 16, f"{g['plans']}", ha="center", va="bottom",
+                fontsize=10, fontweight="bold")
+    top = max(plans)
+    if cap is not None:
+        ax.axhline(cap, ls="--", lw=1, color="grey",
+                   label=f"{cap} draws requested (NULL_PERMS cap)")
+        top = max(top, cap)
+    ax.set_ylim(0, top * 1.12)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{g['used']} donors used\n(of {g['paired']} paired)\n"
+                        + "\n".join(_short(t) for t in g["types"])
+                        for g in groups], fontsize=7.5)
+    ax.set(ylabel="distinct balanced donor-swap plans",
+           title="The plan space is tiny: "
+                 + ", ".join(str(p) for p in plans[:-1]) + f" and {plans[-1]} plans at "
+                 + ", ".join(str(g["used"]) for g in groups[:-1])
+                 + f" and {groups[-1]['used']} donors,\n"
+                 + (f"so {cap} independent draws cannot exist" if cap else
+                    "so many independent draws cannot exist"))
+    ax.title.set_fontsize(10)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    enumerated = all(g["plans"] == g["draws"] for g in groups)
+    _save(fig, "null_plan_space.png",
+          f"n = {len(bal)} cell types; every plan was "
+          f"{'enumerated, so draws run = plans that exist' if enumerated else 'not enumerated'}. "
+          "A plan and its complement give the same |t|; with an odd donor count "
+          "one donor is held out per draw.\n"
+          "source: results/mixed_null_donor_swap.csv (n_plans_available, "
+          "n_distinct_draws); cap: NULL_PERMS in scripts/mixed_vs_others.py")
+
+
 FIGURES = {
     "null": fig_null,
     "power": fig_power,
@@ -503,6 +570,7 @@ FIGURES = {
     "mixed_null": fig_mixed_null,
     "nbglm_null": fig_nbglm_null,
     "boundary": fig_boundary,
+    "plan_space": fig_plan_space,
 }
 
 
