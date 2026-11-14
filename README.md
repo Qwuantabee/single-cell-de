@@ -243,19 +243,23 @@ and the earlier version of this README implied it was by quoting only the
 | patient_107 | 0 | 1 | 1 |
 
 132 cells across 8 donors, but `patient_1039` supplies **111 of them
-(84%)**. Sweeping the threshold: ≥25 cells → 1 donor; ≥10 → 1; ≥5 → 1; ≥3 →
-1; ≥2 → 2; ≥1 → 4. So no threshold above 2 recovers a paired design, and
-the loosest one that compares anything (≥1 cell per condition, 4 donors,
-125 cells) is still a comparison of one donor's megakaryocytes with 58-cell
-and 1-cell profiles treated as equally informative replicates.
+(84%)**.
+
+No threshold fixes this, and that is the point the earlier README obscured.
+Sweeping it (`results/megakaryocyte_threshold_sweep.csv`): ≥25 cells → 1
+donor; ≥10 → 1; ≥5 → 1; ≥3 → 1; ≥2 → 2; ≥1 → 4. A paired design only
+appears at ≥1 cell, which is not a design: it would pair 58-cell profiles
+against 1-cell profiles and call them equally informative replicates, with
+84% of the type from one donor.
 
 Run at that loosest threshold the test has almost nothing to work with: 85
 genes survive filtering, the median paired log₂ SD is 0.80, and the minimum
-detectable effect at 80% power is **1.67 log₂ (3.2×)** — nothing in the
-interferon programme is that large in this type, and 0 genes are called.
-That is a power statement, not a biological one: megakaryocytes may respond,
-this dataset cannot say. `results/megakaryocyte_summary.csv` carries the
-numbers, `results/megakaryocyte_threshold_sweep.csv` the full sweep, and
+detectable effect at 80% power is **1.67 log₂ (3.2×)** — larger than anything
+in the interferon programme here — and 0 genes are called. That is a power
+statement, not a biological one: megakaryocytes may respond, this dataset
+cannot say. `results/megakaryocyte_summary.csv` records
+`expression_test_reliable = False` alongside the numbers,
+`results/megakaryocyte_threshold_sweep.csv` the full sweep, and
 `results/megakaryocyte_donor_counts.csv` the counts above.
 
 Pooled over all cells: **3,211** genes significant. Stratified: **3,512**
@@ -282,9 +286,9 @@ On the CD4 T cell subset (11,238 cells, 7,048 genes, 8 donors):
 
 | method | genes called at FDR 5% | wall clock | Jaccard vs mixed |
 |---|---|---|---|
-| per-cell Wilcoxon | 2,112 | 8.0 s | 0.649 |
+| per-cell Wilcoxon | 2,112 | 6.0 s | 0.649 |
 | pseudobulk paired t | 986 | 0.6 s | 0.526 |
-| mixed (1 \| donor) | 1,875 | 105.8 s | — |
+| mixed (1 \| donor) | 1,875 | 104.6 s | — |
 
 The fold changes from the two donor-aware methods are identical: Pearson r =
 1.000 and Spearman ρ = 1.000 on log₂FC. The mixed model is not estimating a
@@ -304,34 +308,47 @@ also re-checks it on every permutation before using it, and records
 
 | method | false positives per 500 genes | FDP |
 |---|---|---|
-| pseudobulk | 0.2 | 0.0004 |
-| mixed | 8.7 | 0.017 |
+| pseudobulk | 0.0 | 0.000 |
+| mixed | 3.8 | 0.008 |
 
 Read these against the right reference. Because all 500 genes are truly null,
 a *perfectly calibrated* test at FDR 5% would call **25 of 500** false
 positives on average — 5% × 500. That is the null expectation, not an
 allowance: it is what calibration means, so a method that returns fewer than
-25 is not "doing well", it is losing power.
+25 is not "doing better", it is throwing away power.
 
-Against that reference, **pseudobulk at 0.2/500 is 125× below the 25 a
-calibrated test would produce.** It is drastically over-conservative, not
-well-calibrated. The mixed model at 8.7/500 is closer to 25 but still about
-three times below it — over-conservative too, just much less so. Neither
-method is liberal on this null: neither calls anything like the 365/500 the
-per-cell Wilcoxon calls in the simulation, and neither exceeds its nominal
-rate. The correct ranking is *pseudobulk is over-conservative, mixed is
-less over-conservative*, and on this evidence the gap between 0.2 and 8.7 is
-a difference in conservatism, not a difference in validity.
+Against that reference, **pseudobulk at 0/500 is infinitely below the 25 a
+calibrated test would produce** — it called nothing at all in 10 permutations
+where a calibrated test would have called 25 per 500 genes on average. It is
+drastically over-conservative, not well-calibrated. The mixed model at
+3.8/500 is closer to 25 but still roughly 6× below it — over-conservative
+too, just much less so. Neither method is liberal on this null: neither comes
+close to the 365/500 the per-cell Wilcoxon calls in the simulation, and
+neither exceeds its nominal rate. The correct statement is *pseudobulk is
+over-conservative, mixed is less over-conservative*; the gap between 0 and
+3.8 is a difference in conservatism, not in validity.
 
-That conservatism is the paired t-test being exact rather than
-approximate — with 8 pairs and a large effect there is little to gain — and
-it is the honest cost of a design with few donors. The mixed model is ~40×
-looser than the paired t-test on this null, and the reason is in the variance
-component: median donor variance 0.021, and 2,444 of 7,048 genes (35%) at or
-below 1e-6. With two samples per donor the random intercept is estimated from
-one pair, so it sits on the boundary and the standard error on the condition
-effect is then estimated from an almost-pooled model — less conservative than
-the exact paired t-test without ever becoming liberal.
+That conservatism is the paired t-test being exact rather than approximate:
+with 8 pairs and this much within-pair noise there is little to gain, and it
+is the honest cost of a design with few donors. The mixed model is looser
+than the paired t-test on this null by roughly a factor of the ratio above,
+and the reason is in the variance component: median donor variance 0.021, and
+2,444 of 7,048 genes (35%) at or below 1e-6. With two samples per donor the
+random intercept is estimated from one pair, so it sits on the boundary and
+the standard error on the condition effect is then estimated from an
+almost-pooled model — less conservative than the exact paired t-test without
+ever becoming liberal.
+
+One caveat on these numbers, stated because they moved: an earlier version of
+this script drew the swaps from the same RNG stream that had already been used
+to pick the 500 null genes, and reported 0.2 and 8.7. The current numbers come
+from `scpipe.permutation`, which makes the donor-level swap explicit and draws
+its own stream, and the same property is verified on every permutation
+(`permutation_preserved_donors: True` in
+`results/mixed_null_donor_swap.csv`). Both versions of the run put pseudobulk
+far below 25 and mixed below 25, so the conclusion is unchanged; the exact
+false-positive counts on a 10-permutation null with 500 genes are noisy in the
+first place.
 
 **The cost.** One model per gene is 176× the paired t-test (105.8 s vs 0.6 s
 for 7,048 genes; 15.0 ms/gene). Per-cell rather than per-profile fits are

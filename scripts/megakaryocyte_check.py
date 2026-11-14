@@ -146,21 +146,32 @@ def main():
         mde_block = {"error": str(exc)}
 
     # ---- 5. the verdict, computed rather than asserted ----------------
+    # "Test possible" and "test usable" are different questions. At >=1 cell
+    # in both conditions four donors technically qualify, so the pairing
+    # exists; what it does NOT have is any balance, because one donor is 84%
+    # of the cells and the other extremes are 1-cell profiles. The boolean
+    # below is about the pairing, the number next to it is why the pairing is
+    # not informative.
     testable = loosest >= 2
+    balanced = top_share < 0.5
+    reliable = bool(testable and balanced)
     statement = (
         f"Megakaryocytes cannot support a donor-level expression test. At the "
         f"loosest threshold that still compares anything (>=1 cell in both "
-        f"conditions) only {loosest} donors qualify, and {top} supplies "
-        f"{100 * top_share:.0f}% of the cells, so a pooled comparison would "
-        f"be a comparison of one donor's megakaryocytes labelled by "
-        f"condition. The composition of megakaryocytes across conditions is "
+        f"conditions) {loosest} donors qualify, and {top} supplies "
+        f"{100 * top_share:.0f}% of the cells, so the comparison pairs "
+        f"58-cell profiles against 1-cell profiles and is dominated by one "
+        f"donor. The composition of megakaryocytes across conditions is "
         f"testable and is tested on all 8 donors in "
         f"results/celltype_composition_paired.csv; the expression contrast "
         f"is not."
     )
     print("\n--- verdict ---")
     print(statement)
-    print(f"RELAXING_THE_THRESHOLD_DOES_NOT_HELP = {not testable}")
+    print(f"pairing_exists_at_loosest_threshold = {testable}")
+    print(f"cell_balance_reasonable = {balanced} "
+          f"(largest donor {100 * top_share:.0f}% of the type)")
+    print(f"expression_test_reliable = {reliable}")
 
     summary = pd.DataFrame([{
         "cell_type": CELL_TYPE,
@@ -171,7 +182,8 @@ def main():
         "largest_donor": top,
         "largest_donor_share": top_share,
         "donors_at_loosest_threshold": loosest,
-        "expression_test_possible": bool(testable),
+        "pairing_exists": bool(testable),
+        "expression_test_reliable": reliable,
         **mde_block,
     }])
     summary.to_csv(RESULTS / "megakaryocyte_summary.csv", index=False)
