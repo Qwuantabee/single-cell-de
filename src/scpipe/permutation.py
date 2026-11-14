@@ -28,6 +28,15 @@ Two functions, two granularities:
 
 Both return the permuted condition labels in the same order as the input, so
 a caller can zip them straight back onto the rows.
+
+A third decision rule, `balanced_swap_plan`, exists because the independent
+0.5 coin is not a null when a real effect is present. Flipping each donor
+with probability one half gives a Binomial(n, 1/2) number of flips, so a draw
+can leave most donors unflipped; those donors keep their real condition
+effect, the paired contrast no longer averages to zero, and a method that
+correctly finds the effect gets scored as a false positive. Fixing the number
+of flips at the balanced count makes the flipped and unflipped halves cancel
+*exactly* in expectation, which is what "the true effect is zero" requires.
 """
 
 import numpy as np
@@ -46,12 +55,64 @@ def sample_swap_plan(samples, rng, swap_probability=0.5):
     return dict(zip(units, draws.tolist()))
 
 
+def balanced_swap_plan(samples, rng, n_swaps=None):
+    """Decide exactly `n_swaps` units to flip, and leave the rest alone.
+
+    Default n_swaps is len(units) // 2. When the number of units is even this
+    halves the sample into flipped and unflipped, so a constant real effect of
+    +e becomes +e on half the donors and -e on the other half and cancels
+    exactly. With an odd count one unit is always left over, so a caller that
+    needs an exact cancellation restricts to an even subset first (see
+    scripts/mixed_vs_others.py, which holds one donor out per draw).
+
+    This is not interchangeable with swap_probability=0.5: the coin version has
+    a binomial spread, and an unlucky draw that flips two donors out of eight
+    leaves six donors carrying the real effect.
+    """
+    units = sorted(set(np.asarray(samples).astype(str)))
+    n = len(units)
+    k = n // 2 if n_swaps is None else int(n_swaps)
+    k = max(0, min(k, n))
+    if n == 0:
+        return {}
+    if k == 0:
+        flip = set()
+    elif k == n:
+        flip = set(range(n))
+    else:
+        flip = {int(i) for i in np.atleast_1d(
+            rng.choice(n, size=k, replace=False))}
+    return {unit: (i in flip) for i, unit in enumerate(units)}
+
+
+def _apply_plan(samples, conditions, plan, group_a="stim", group_b="ctrl"):
+    """Relabel rows whose unit was flipped, exchanging the two conditions."""
+    samples = np.asarray(samples).astype(str)
+    conditions = np.asarray(conditions).astype(str)
+    out = conditions.copy()
+    for unit, do_swap in plan.items():
+        if not do_swap:
+            continue
+        rows = np.flatnonzero(samples == unit)
+        labels = conditions[rows]
+        counts = {lab: int((labels == lab).sum()) for lab in (group_a, group_b)}
+        # exactly one of each: an unambiguous two-aliquot pair
+        if counts[group_a] == 1 and counts[group_b] == 1:
+            out[rows] = np.where(labels == group_a, group_b, group_a)
+        # anything else (duplicated aliquots, a missing condition) is left
+        # alone rather than half-swapped
+    return out
+
+
 def swap_samples(samples, conditions, rng, group_a="stim", group_b="ctrl",
-                 other_labels=(), swap_probability=0.5):
+                 other_labels=(), swap_probability=0.5, plan=None):
     """Swap the labels of each sample unit's two aliquots.
 
     samples: one entry per row (pseudobulk profile), the donor.
     conditions: the row's condition label.
+    plan: an explicit {unit: flip} decision, for callers that need a balanced
+        draw (see `balanced_swap_plan`). When omitted, each unit gets an
+        independent coin with probability `swap_probability`.
     Returns a new array of labels, same length and order.
 
     A unit whose rows are not exactly one group_a and one group_b is left
@@ -60,25 +121,14 @@ def swap_samples(samples, conditions, rng, group_a="stim", group_b="ctrl",
     """
     samples = np.asarray(samples).astype(str)
     conditions = np.asarray(conditions).astype(str)
-    plan = sample_swap_plan(samples, rng, swap_probability)
-
-    out = conditions.copy()
-    for unit, do_swap in plan.items():
-        rows = np.flatnonzero(samples == unit)
-        labels = conditions[rows]
-        counts = {lab: int((labels == lab).sum()) for lab in (group_a, group_b)}
-        if not do_swap:
-            continue
-        # exactly one of each: an unambiguous two-aliquot pair
-        if counts[group_a] == 1 and counts[group_b] == 1:
-            out[rows] = np.where(labels == group_a, group_b, group_a)
-        # anything else (duplicated aliquots, a missing condition) is left
-        # alone rather than half-swapped
+    if plan is None:
+        plan = sample_swap_plan(samples, rng, swap_probability)
+    out = _apply_plan(samples, conditions, plan, group_a, group_b)
     return out, plan
 
 
 def swap_cells(samples, conditions, rng, group_a="stim", group_b="ctrl",
-               swap_probability=0.5):
+               swap_probability=0.5, plan=None):
     """Per-cell labels, swapped by the cell's own donor's decision.
 
     Every cell keeps its donor. A donor that is swapped has all of its cells
@@ -87,7 +137,8 @@ def swap_cells(samples, conditions, rng, group_a="stim", group_b="ctrl",
     """
     samples = np.asarray(samples).astype(str)
     conditions = np.asarray(conditions).astype(str)
-    plan = sample_swap_plan(samples, rng, swap_probability)
+    if plan is None:
+        plan = sample_swap_plan(samples, rng, swap_probability)
     do_swap = np.array([plan[s] for s in samples], dtype=bool)
     is_a = conditions == group_a
     is_b = conditions == group_b

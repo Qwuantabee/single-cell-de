@@ -1,0 +1,5 @@
+cell_type,method,balance,mean_false_positives,perms,genes_tested,per_draw,expected_fp_bh,ratio_observed_expected,permutation_preserved_donors
+FCGR3A+ Monocytes,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+FCGR3A+ Monocytes,pseudobulk,unbalanced,14.7,10,500,147;0;0;0;0;0;0;0;0;0,0.05,293.99999999999994,True
+FCGR3A+ Monocytes,mixed,balanced,8.6,10,500,10;5;5;9;14;6;14;14;0;9,0.05,171.99999999999997,True
+FCGR3A+ Monocytes,mixed,unbalanced,44.6,10,500,281;48;16;4;1;7;48;6;6;29,0.05,892.0,True
