@@ -31,9 +31,12 @@ changed. Every significant call is a false positive by construction.
 | per-cell Wilcoxon | 364.7 (72.9%) |
 | pseudobulk, paired t-test | 0.0 (0.0%) |
 
-A calibrated test at FDR 5% would call about 25 of 500 false positives on
-average (5% × 500), so this is the expected rate under correct calibration,
-not a ceiling.
+An *uncorrected* p < 0.05 threshold would call about 25 of 500 false positives
+on average (5% × 500). Under the Benjamini-Hochberg correction both methods
+actually use at q = 0.05, a calibrated test on all-null data calls a mean of
+about **0.05 of 500**, not 25 — BH bounds the false-discovery *proportion*
+among rejections, so a correct procedure returns essentially nothing here.
+That distinction matters for how the mixed-model null below is read.
 
 ## 2. It is not buying power
 
@@ -311,22 +314,33 @@ also re-checks it on every permutation before using it, and records
 | pseudobulk | 0.0 | 0.000 |
 | mixed | 3.8 | 0.008 |
 
-Read these against the right reference. Because all 500 genes are truly null,
-a *perfectly calibrated* test at FDR 5% would call **25 of 500** false
-positives on average — 5% × 500. That is the null expectation, not an
-allowance: it is what calibration means, so a method that returns fewer than
-25 is not "doing better", it is throwing away power.
+Read these against the right reference, and the reference is easy to get
+wrong. Both arms call significance on **Benjamini-Hochberg q < 0.05 over the
+500 genes**, not on raw p < 0.05. Under a complete null with m = 500, BH at
+q = 0.05 rejects a mean of about **0.05 genes**, not 25: BH bounds the
+*proportion* of false discoveries among rejections at 5%, so a calibrated
+procedure on all-null data correctly returns essentially nothing. A
+simulation over 5,000 draws gives 0.055 mean rejections and P(any) = 0.049.
 
-Against that reference, **pseudobulk at 0/500 is infinitely below the 25 a
-calibrated test would produce** — it called nothing at all in 10 permutations
-where a calibrated test would have called 25 per 500 genes on average. It is
-drastically over-conservative, not well-calibrated. The mixed model at
-3.8/500 is closer to 25 but still roughly 6× below it — over-conservative
-too, just much less so. Neither method is liberal on this null: neither comes
-close to the 365/500 the per-cell Wilcoxon calls in the simulation, and
-neither exceeds its nominal rate. The correct statement is *pseudobulk is
-over-conservative, mixed is less over-conservative*; the gap between 0 and
-3.8 is a difference in conservatism, not in validity.
+Against *that* reference the two methods read differently from how they first
+appear:
+
+* **pseudobulk at 0.0/500 is exactly at the expectation** for a
+  BH-corrected test on all-null data. It is not over-conservative; it is
+  calibrated.
+* **The mixed model at 3.8/500 is roughly 70× above the expectation.** On
+  this null it is anti-conservative — it calls false positives that BH at
+  this gene count should almost never produce. Its FDP of 0.008 stays under
+  the nominal 0.05, which is why it is not broken in the usual sense, but the
+  comparison is no longer "two degrees of conservatism": one method is
+  calibrated and the other is not, on this particular null.
+
+An earlier version of this section compared both against 25/500 (5% × 500),
+which is the expectation for an *uncorrected* p < 0.05 threshold, not for BH.
+That reference made pseudobulk look pathologically conservative and the mixed
+model look nearly calibrated — the opposite of what the same numbers mean
+under the correction the code actually applies. The per-cell Wilcoxon's
+365/500 remains liberal by either reading.
 
 That conservatism is the paired t-test being exact rather than approximate:
 with 8 pairs and this much within-pair noise there is little to gain, and it
