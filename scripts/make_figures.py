@@ -560,6 +560,108 @@ def fig_plan_space():
           "n_distinct_draws); cap: NULL_PERMS in scripts/mixed_vs_others.py")
 
 
+def fig_log2fc_agreement():
+    """One normalisation: the GLM and pseudobulk log2FC columns now coincide."""
+    after = _maybe("nbglm_real_summary.csv", "scripts/nbglm_real.py")
+    if after is None:
+        return
+    before = _maybe("nbglm_real_log2fc_before_fix.csv",
+                    "(committed copy of commit 1c0c940)", comment="#")
+    isg = _maybe("nbglm_real_isg.csv", "scripts/nbglm_real.py")
+    types = list(after["cell_type"])
+    x = np.arange(len(types))
+    a_diff = after["mean_abs_diff"].to_numpy()
+    floor = 1e-17
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.3),
+                             gridspec_kw={"width_ratios": [1.1, 1]})
+    ax = axes[0]
+    # dots, not bars: a bar on a log axis has no meaningful length
+    shown = np.maximum(a_diff, 2 * floor)      # an exact 0 cannot sit on a log axis
+    if before is not None:
+        before = before.set_index("cell_type").loc[types]
+        b_diff = before["mean_abs_diff"].to_numpy()
+        for xi, b, a in zip(x, b_diff, shown):
+            ax.plot([xi, xi], [a, b], color="grey", lw=0.8, zorder=0)
+        ax.plot(x, b_diff, "o", color="C3", mec="black", mew=0.5,
+                label="before: GLM on total-count CPM, pseudobulk on size factors")
+        for xi, v in zip(x, b_diff):
+            ax.text(xi, v * 1.6, f"{v:.2f}", ha="center", va="bottom", fontsize=7)
+    ax.plot(x, shown, "o", color="C0", mec="black", mew=0.5,
+            label="now: both on median-of-ratios size factors")
+    for xi, v, s in zip(x, a_diff, shown):
+        ax.text(xi, s * 1.6, "0 (exact)" if v == 0 else f"{v:.0e}", ha="center",
+                va="bottom", fontsize=7)
+    ax.set_yscale("log")
+    ax.set_ylim(floor, 5)
+    ax.set_xlim(-0.6, len(types) - 0.4)
+    ax.set_xticks(x)
+    ax.set_xticklabels([_tick(t) for t in types], fontsize=7.5)
+    title = ("One shared normalisation: the two log2FC columns coincide\n"
+             f"(mean |diff| at most {a_diff.max():.0e} log2)")
+    if before is not None:
+        title = ("One shared normalisation: the two log2FC columns coincide\n"
+                 f"(mean |diff| {b_diff.min():.2f}-{b_diff.max():.2f} before, "
+                 f"at most {a_diff.max():.0e} now)")
+    ax.set(ylabel="mean |GLM log2FC - pseudobulk log2FC|\n(log2 units, log scale)",
+           title=title)
+    ax.title.set_fontsize(10)
+    ax.legend(frameon=False, fontsize=7.5, loc="center")
+
+    ax = axes[1]
+    sep = after["glm_separated"].to_numpy()
+    ax.bar(x, sep, width=0.6, color="C3", edgecolor="black", linewidth=0.5)
+    for xi, v in zip(x, sep):
+        ax.text(xi, v + 0.15, str(int(v)), ha="center", va="bottom", fontsize=8)
+    n_sep, n_called = int(sep.sum()), int(after["glm_called_separated"].sum())
+    n_failed = int(after["glm_failed"].sum())
+    flagged = []
+    if isg is not None:
+        for _, row in after.iterrows():
+            genes = str(row["glm_separated_genes"]).split(";")
+            panel = isg[isg["cell_type"] == row["cell_type"]].set_index("gene")
+            for g in genes:
+                if g in panel.index:
+                    q = panel.at[g, "q_pb"]
+                    flagged.append((row["cell_type"], g, q, panel.at[g, "q_nb"]))
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{_tick(t)}\nr = {r:.2f}" for t, r in
+                        zip(types, after["glm_coef_pearson_ok_fits"])],
+                       fontsize=7.5)
+    ax.set_ylim(0, max(sep.max(), 1) * 1.5)
+    line2 = (f"{len(flagged)} is a panel interferon gene" if len(flagged) == 1
+             else f"{len(flagged)} are panel interferon genes" if flagged
+             else "none is a panel interferon gene")
+    ax.set(ylabel="genes with a separated GLM fit",
+           title=f"{n_sep} GLM fits are separated: {n_called or 'none'} called, "
+                 f"{n_failed or 'none'} failed outright;\n{line2}")
+    ax.title.set_fontsize(10)
+    r_ok = after["glm_coef_pearson_ok_fits"]
+    ax.text(0.02, 0.98, "r under each type: Pearson of the GLM's own\n"
+            "coefficient vs the pseudobulk log2FC on the\n"
+            f"fits that are estimates ({r_ok.min():.2f}-{r_ok.max():.2f})",
+            transform=ax.transAxes, va="top", fontsize=7)
+    for ct, g, q_pb, q_nb in flagged:
+        xi = types.index(ct)
+        ax.annotate(f"{g} ({_short(ct)}):\npseudobulk q {q_pb:.0e}, GLM q = {q_nb:.0f}",
+                    xy=(xi, after.set_index("cell_type").at[ct, "glm_separated"]),
+                    xytext=(xi + 0.4, max(sep) * 0.95), fontsize=7.5, ha="left",
+                    arrowprops={"arrowstyle": "-", "color": "grey", "lw": 0.8})
+    pr = ("Pearson r between the two log2FC columns: "
+          + (f"{before['pearson'].min():.3f}-{before['pearson'].max():.3f} before, "
+             if before is not None else "")
+          + f"{after['pearson'].min():.3f} now (identity under one normalisation, not "
+          "independent agreement). Right: r = Pearson of the GLM's own coefficient vs "
+          "the pseudobulk log2FC on the fits that are estimates.")
+    _save(fig, "nbglm_log2fc_agreement.png",
+          f"n = {len(types)} cell types ({int(after['donors'].min())}-"
+          f"{int(after['donors'].max())} paired donors); {int(after['n_genes'].sum()):,} "
+          f"gene fits. {pr}\n"
+          "source: results/nbglm_real_summary.csv, "
+          "results/nbglm_real_log2fc_before_fix.csv (verbatim columns of the same "
+          "file at commit 1c0c940), results/nbglm_real_isg.csv")
+
+
 FIGURES = {
     "null": fig_null,
     "power": fig_power,
@@ -571,6 +673,7 @@ FIGURES = {
     "nbglm_null": fig_nbglm_null,
     "boundary": fig_boundary,
     "plan_space": fig_plan_space,
+    "log2fc": fig_log2fc_agreement,
 }
 
 
