@@ -32,6 +32,24 @@ MIN_CELLS = 25
 MIN_DONORS = 4
 
 
+def marker_share(novel, top_by_type):
+    """Share of pooled-only genes that are top markers of some cell type.
+
+    novel: genes significant pooled and in no cell type.
+    top_by_type: {cell_type: iterable of that type's top marker genes}.
+    Returns (share, per_type) where per_type is the overlap count for each
+    type. share is NaN when there are no pooled-only genes (a share of nothing
+    is undefined, not zero). This replaces a summary column that was
+    hard-coded to NaN.
+    """
+    novel = set(novel)
+    per_type = {ct: len(set(top) & novel) for ct, top in top_by_type.items()}
+    union = set().union(*[set(t) for t in top_by_type.values()]) \
+        if top_by_type else set()
+    share = (len(novel & union) / len(novel)) if novel else float("nan")
+    return share, per_type
+
+
 def skipped_detail(adata, skipped, group_a="stim", group_b="ctrl"):
     """Print the per-donor counts behind every skipped cell type.
 
@@ -144,7 +162,7 @@ def main(min_cells=MIN_CELLS, min_donors=MIN_DONORS):
     # fold change should also be predictable from the composition shift:
     # when a cell type becomes more common, its markers rise in the pooled
     # comparison without any change in their own expression.
-    top_ct = shift["log2_ratio"].idxmax()
+    marker_share_value = float("nan")
     if novel:
         nov = pooled.loc[sorted(novel)].sort_values("log2fc", ascending=False)
         print(f"\ntop pooled-only genes by log2fc:")
@@ -168,11 +186,14 @@ def main(min_cells=MIN_CELLS, min_donors=MIN_DONORS):
             score = pd.Series(mean - mean_o, index=var_names)
             marker_scores[ct] = score
         markers = pd.DataFrame(marker_scores)
-        for ct in per_type.index:
-            top = markers[ct].sort_values(ascending=False).head(30).index
-            overlap = len(set(top) & novel)
+        top_by_type = {ct: markers[ct].sort_values(
+            ascending=False).head(30).index for ct in per_type.index}
+        marker_share_value, overlaps = marker_share(novel, top_by_type)
+        for ct, overlap in overlaps.items():
             print(f"  pooled-only genes among top 30 markers of {ct}: "
                   f"{overlap}/30")
+        print(f"  share of pooled-only genes that are a top-30 marker of at "
+              f"least one type: {marker_share_value:.3f}")
 
     # ---- 5. the known interferon genes --------------------------------
     summary_rows = []
@@ -205,7 +226,7 @@ def main(min_cells=MIN_CELLS, min_donors=MIN_DONORS):
         "stratified_union_sig_global_bh": len(union_global),
         "pooled_only_sig": len(novel),
         "stratified_only_sig": len(lost),
-        "pooled_sig_marker_share": np.nan,
+        "pooled_sig_marker_share": marker_share_value,
         "pooled_finds_isgs": len(pooled_found),
         "stratified_finds_isgs_anywhere": int(
             (isg["n_isg_found"] > 0).sum()),
