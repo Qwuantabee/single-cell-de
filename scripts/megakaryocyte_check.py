@@ -49,6 +49,47 @@ def min_detectable_effect(sd, n, alpha=ALPHA, power=POWER):
     return float(crit * sd / np.sqrt(n))
 
 
+def exact_min_detectable_effect(sd, n, alpha=ALPHA, power=POWER):
+    """MDE from the noncentral t distribution (exact for a paired t-test).
+
+    min_detectable_effect above adds the central-t quantiles, which is an
+    approximation: it understates the effect needed because the test statistic
+    under the alternative is noncentral t with ncp = delta * sqrt(n) / sd. This
+    solves P(|T_{n-1}(ncp)| > t_crit) = power for delta. Pass alpha / m to get
+    the MDE after a Bonferroni correction over m genes (the unadjusted alpha
+    is a per-gene statement and says nothing about finding ONE gene among
+    thousands).
+    """
+    from scipy import optimize
+    if n < 2 or not np.isfinite(sd):
+        return float("inf")
+    df = n - 1
+    t_crit = stats.t.ppf(1 - alpha / 2, df)
+
+    def pw(ncp):
+        # P(|T| > t_crit) with T = (Z + ncp) / sqrt(V / df), V ~ chi2(df),
+        # integrated over V directly: scipy's nct.sf returns NaN for the
+        # large critical values a Bonferroni alpha produces at few df.
+        from scipy import integrate
+
+        def integrand(v):
+            s = np.sqrt(v / df)
+            return stats.chi2.pdf(v, df) * (
+                stats.norm.cdf(ncp - t_crit * s)
+                + stats.norm.cdf(-ncp - t_crit * s))
+        hi_v = stats.chi2.isf(1e-12, df)
+        val, _ = integrate.quad(integrand, 0.0, hi_v, limit=200)
+        return float(val)
+
+    hi = 1.0
+    while pw(hi) < power:
+        hi *= 2.0
+        if hi > 1e4:
+            return float("inf")
+    ncp = optimize.brentq(lambda x: pw(x) - power, 0.0, hi)
+    return float(ncp * sd / np.sqrt(n))
+
+
 def main():
     adata = data.load_kang()
     obs = adata.obs
@@ -122,6 +163,7 @@ def main():
         diffs = np.vstack(diffs)
         paired_sd = float(np.median(np.std(diffs, axis=0, ddof=1)))
         mde = min_detectable_effect(paired_sd, len(shared))
+        mde_exact = exact_min_detectable_effect(paired_sd, len(shared))
         mde_block = {
             "donors_in_loosest_design": len(shared),
             "cells_per_profile_min": int(meta["n_cells"].min()),
@@ -129,6 +171,7 @@ def main():
             "median_paired_sd_log2": paired_sd,
             "mde_log2_at_80pct_power": mde,
             "mde_fold": 2.0 ** mde,
+            "mde_log2_exact_noncentral_t": mde_exact,
         }
         print("\n--- power of the loosest possible design ---")
         for k, v in mde_block.items():
@@ -140,6 +183,14 @@ def main():
         print(f"  genes tested {len(res):,}, significant at FDR 5%: {n_sig}")
         mde_block["genes_tested"] = int(len(res))
         mde_block["genes_significant"] = int(n_sig)
+        mde_block["mde_log2_exact_bonferroni"] = exact_min_detectable_effect(
+            paired_sd, len(shared), alpha=ALPHA / len(res))
+        mde_block["largest_observed_abs_log2fc"] = float(
+            res["log2fc"].abs().max())
+        print(f"  exact noncentral-t MDE {mde_block['mde_log2_exact_noncentral_t']:.3f}"
+              f" log2; Bonferroni over {len(res)} genes "
+              f"{mde_block['mde_log2_exact_bonferroni']:.3f} log2; largest "
+              f"observed |log2FC| {mde_block['largest_observed_abs_log2fc']:.3f}")
         res.to_csv(RESULTS / "de_megakaryocytes_sensitivity_min1cell.csv")
     except ValueError as exc:
         print(f"\nloosest design could not be aggregated: {exc}")
