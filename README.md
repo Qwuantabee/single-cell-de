@@ -380,6 +380,83 @@ replication available (one sample per donor, many cells). When a paired
 design exists with few donors, the paired t-test on pseudobulk costs 0.6 s,
 has a tighter null, and estimates the same effect size to three decimals.
 
+## 9. The NB GLM on real data: what the simulator could not say
+
+Everything in the "still to do" note is simulated. Power and observed FDP
+both need genes whose true status is known, and the Kang data has none, so
+`scripts/nbglm_real.py` asks the questions that real counts *can* answer:
+do the two methods agree on the effect, do they call the same genes, are the
+known ISGs found, and how does each behave under a null where the answer is
+known by construction.
+
+Same pseudobulk matrix, same gene filter, same BH correction, same 8 paired
+donors (ctrl vs 6 h IFN-β). BH q < 0.05:
+
+| cell type | cells | donors | genes tested | pseudobulk | NB GLM | shared | Jaccard | log₂FC r (ρ) |
+|---|---|---|---|---|---|---|---|---|
+| CD4 T cells | 11,238 | 8 | 7,048 | 986 | 1,362 | 884 | 0.604 | 0.999 (0.999) |
+| CD14+ Monocytes | 5,697 | 8 | 5,364 | 2,952 | 3,270 | 2,823 | 0.831 | 0.999 (1.000) |
+| B cells | 2,651 | 8 | 3,804 | 563 | 790 | 520 | 0.624 | 0.982 (0.986) |
+| NK cells | 1,673 | 7 | 2,436 | 401 | 445 | 336 | 0.659 | 0.976 (0.986) |
+| CD8 T cells | 1,542 | 5 | 2,081 | 88 | 168 | 75 | 0.414 | 0.969 (0.979) |
+| FCGR3A+ Monocytes | 947 | 5 | 2,673 | 746 | 801 | 611 | 0.653 | 0.994 (0.999) |
+| Dendritic cells | 424 | 5 | 2,078 | 565 | 607 | 467 | 0.662 | 0.988 (0.999) |
+
+The GLM calls **more** genes in every cell type, by 7–91%, and the two
+lists are far from identical: on CD4 T cells 478 genes are GLM-only against
+102 pseudobulk-only. The GLM-only calls are the borderline ones — median
+pseudobulk q 0.11 and median |log₂FC| 0.52, against 0.83 for the shared set —
+so this is not a second biological programme, it is the GLM promoting genes
+the t-test could not quite reach. Fold changes agree to three decimals
+because both estimate the same group means; only the standard errors differ.
+
+Runtime for 7,048 genes on CD4 T cells: 0.45 s for the t-test, 2.51 s for
+the GLM (~6×). The GLM's Wald fit failed to give a finite standard error on
+17 genes across all seven types (0 on CD4 T cells; EDN1, PDGFRL and CH25H
+among them), each left at p = 1 rather than dropped.
+
+**The ISGs.** All 12 are called by both methods in 6 of 7 cell types; the
+exception is NK cells, where the GLM misses one (CXCL10, one of the 17 failed
+fits). Ranks differ sharply: on CD4 T cells median rank 74 under pseudobulk
+versus 16 under the GLM, and the same pattern holds everywhere (FCGR3A+
+monocytes: 172 vs 11). The GLM orders the real signal more cleanly even
+where the call counts are similar.
+
+**The real null.** Labels swapped within donors by
+`permutation.swap_cells` — no cell changes donor. Two families of draws,
+because they answer different questions. Each is 10 permutations, 7,048
+genes, BH q < 0.05:
+
+| family | donors flipped | pseudobulk FP | NB GLM FP |
+|---|---|---|---|
+| fair coin (k = 4) | 4 of 8 | 0.0 (5 draws) | 0.0 (5 draws) |
+| fair coin (k = 5) | 5 of 8 | 0.0 (3 draws) | 41.7 (3 draws) |
+| fair coin (k = 6) | 6 of 8 | 0.0 (2 draws) | 247.5 (2 draws) |
+| balanced, k = n/2 | 4 of 8 | 0.0 (10 draws) | 0.3 (10 draws, max 3) |
+
+The k-dependence is the whole story and it is not a calibration result. A
+swap of k of n donors is only exactly null at k = n/2: at k = 6 of 8 the two
+unflipped donors still carry the genuine interferon response, and the GLM
+picks it up. So those unbalanced draws — 0 calls at k=4, 28–57 at k=5, 152–343 at k=6 —
+read as the GLM finding real residual signal that the t-test is too blunt to see, not as false positives.
+The strictly-null family is the balanced one, and there the GLM averages
+**0.3 of 7,048** against a calibrated expectation of 0.05. That is not zero
+— 3 genes on one draw of ten — but it is the same order, three orders of
+magnitude away from the 5%-of-genes reading that BH is often mistaken for.
+10 draws cannot resolve 0.3 from 0.05; what they rule out is gross
+miscalibration.
+
+**The verdict on the headline.** On real data the GLM calls 7–91% more
+genes than the paired t-test, agrees with it almost perfectly on effect size,
+ranks the ISGs higher, costs about 6× the runtime and is calibrated to the
+same order under a true null. So the simulator's *direction* holds on real
+data and its *magnitude* cannot be checked there at all: no real-data
+measurement of power is possible without known ground truth, which is why the
+97%-vs-68% figure stays labelled simulated and the sentence that guessed at
+its real-data size has been replaced by these numbers. Read the extra calls
+as a gain in resolution at the same null calibration, not as extra power that
+has been demonstrated.
+
 ## How the simulation got fixed
 
 The first version of this study produced the opposite of the published
@@ -411,8 +488,11 @@ scripts/
     simulation_study.py     the four simulation experiments
     false_positive_test.py  the null experiment on real data
     real_analysis.py        ctrl vs stim per cell type, the positive control
+    nbglm_study.py          the GLM vs the t-test, simulated (power, FDP)
+    nbglm_real.py           the GLM vs the t-test, real Kang counts (§9)
+    mixed_vs_others.py      the mixed-model comparison of §8
     make_figures.py
-tests/              19 tests, including calibration tests that assert the
+tests/              73 tests, including calibration tests that assert the
                     per-cell test fails and that it stops failing when
                     sample-level variance is removed
 ```
@@ -458,8 +538,17 @@ Python 3.14 has no anndata or h5py wheels yet; use 3.12 or 3.13.
   approximation is expensive exactly where it was suspected to be — the 3–8
   donor range where most published designs live — and free above 12. Worth
   noting that this simulator generates negative-binomial data, which is the
-  GLM's own model, so this is its best case; on real data the gap is unlikely
-  to be larger than this and could be smaller.
+  GLM's own model, so this is its best case.
+
+  **Every number in the paragraph above is simulated, not real.** The two
+  quantities it reports — power and observed FDP — need genes whose true
+  status is known, and the real dataset does not have any, so they can only
+  come from a simulator. Which is exactly why the hedge that used to sit here
+  ("on real data the gap is unlikely to be larger than this and could be
+  smaller") has been replaced by a measurement: `scripts/nbglm_real.py` runs
+  both methods on the same real pseudobulk matrix, results in
+  `results/nbglm_real_*.csv`. See **§9** below for what came back, and for
+  what can and cannot be concluded from real counts.
 
 ## Note on how this was built
 
