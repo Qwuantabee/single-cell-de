@@ -187,13 +187,21 @@ On Kang the composition does move, but only slightly:
 
 | cell type | mean proportion ctrl | stim | log₂ ratio |
 |---|---|---|---|
-| CD14+ Monocytes | 0.238 | 0.254 | +0.10 |
-| Megakaryocytes | 0.012 | 0.015 | +0.30 |
-| CD4 T cells | 0.448 | 0.440 | −0.03 |
-| NK cells | 0.068 | 0.067 | −0.01 |
-| B cells | 0.102 | 0.097 | −0.07 |
+| CD14+ Monocytes | 0.254 | 0.238 | −0.10 |
+| Megakaryocytes | 0.015 | 0.012 | −0.30 |
+| CD4 T cells | 0.440 | 0.448 | +0.03 |
+| NK cells | 0.067 | 0.068 | +0.01 |
+| B cells | 0.098 | 0.102 | +0.07 |
 
-Largest shift 0.30 log₂ (1.2×). Interferon-β does not, here, rearrange the
+Largest shift 0.30 log₂ (1.2×), and it is a *decrease*: megakaryocytes fall
+from 1.51% to 1.22% of cells. CD14+ monocytes also fall (0.254 to 0.238),
+while CD4 T, B and NK cells rise slightly. Every sign here is the reverse of
+what an earlier version of this table claimed — the CSV's `mean_ctrl` and
+`mean_stim` columns had been read in the wrong order. `results/celltype_composition_paired.csv`
+is the source of record; the numbers above are transcribed from it and the
+per-donor proportions agree (CD14+ falls in 7 of 8 donors).
+
+Interferon-β does not, here, rearrange the
 PBMC composition much — which is worth stating plainly, because it means this
 dataset is *not* the case where pooling fails for that reason, and a
 different dataset (or a disease contrast, which is where composition effects
