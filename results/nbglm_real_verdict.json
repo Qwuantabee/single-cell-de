@@ -3,10 +3,10 @@
   "primary_n_pb": 986,
   "primary_n_nb": 1362,
   "primary_jaccard": 0.6038251366120219,
-  "primary_log2fc_pearson": 0.9988955338271762,
+  "primary_log2fc_pearson": 1.0,
   "null_mean_fp_pseudobulk": 0.0,
-  "null_mean_fp_nb_glm": 31.15,
-  "null_mean_fp_balanced_nb_glm": 0.3,
+  "null_mean_fp_nb_glm": 16.644444444444446,
+  "null_mean_fp_balanced_nb_glm": 3.6857142857142855,
   "null_mean_fp_balanced_pseudobulk": 0.0,
   "simulated_claim": "97% vs 68% power at 6 donors, from simulate.simulate which draws NB data -- the GLM's own model"
 }

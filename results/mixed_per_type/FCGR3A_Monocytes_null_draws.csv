@@ -1,0 +1,26 @@
+cell_type,balance,draw,is_null,held_out,donors_used,donors_flipped,fp_pseudobulk,fp_mixed,raw_p05_pseudobulk,raw_p05_mixed,fp_pseudobulk_random_all_genes,mixed_boundary_frac,structure_ok
+FCGR3A+ Monocytes,balanced,0,True,patient_1016,patient_101|patient_1015|patient_1256|patient_1488,patient_1015|patient_1256,0,0,0.03,0.034,0.0,0.48,True
+FCGR3A+ Monocytes,balanced,1,True,patient_1488,patient_101|patient_1015|patient_1016|patient_1256,patient_1015|patient_1256,0,0,0.038,0.04,0.0,0.474,True
+FCGR3A+ Monocytes,balanced,2,True,patient_1016,patient_101|patient_1015|patient_1256|patient_1488,patient_1256|patient_1488,0,0,0.038,0.038,0.0,0.486,True
+FCGR3A+ Monocytes,balanced,3,True,patient_1256,patient_101|patient_1015|patient_1016|patient_1488,patient_1015|patient_1016,0,0,0.02,0.02,0.0,0.464,True
+FCGR3A+ Monocytes,balanced,4,True,patient_1015,patient_101|patient_1016|patient_1256|patient_1488,patient_1256|patient_1488,0,0,0.036,0.04,0.0,0.432,True
+FCGR3A+ Monocytes,balanced,5,True,patient_1015,patient_101|patient_1016|patient_1256|patient_1488,patient_1016|patient_1256,0,0,0.046,0.046,1.0,0.444,True
+FCGR3A+ Monocytes,balanced,6,True,patient_101,patient_1015|patient_1016|patient_1256|patient_1488,patient_1016|patient_1488,0,0,0.026,0.028,0.0,0.46,True
+FCGR3A+ Monocytes,balanced,7,True,patient_1256,patient_101|patient_1015|patient_1016|patient_1488,patient_1015|patient_1488,0,0,0.03,0.03,0.0,0.454,True
+FCGR3A+ Monocytes,balanced,8,True,patient_1488,patient_101|patient_1015|patient_1016|patient_1256,patient_1015|patient_1016,0,0,0.016,0.016,0.0,0.484,True
+FCGR3A+ Monocytes,balanced,9,True,patient_1015,patient_101|patient_1016|patient_1256|patient_1488,patient_1016|patient_1488,0,0,0.022,0.026,0.0,0.468,True
+FCGR3A+ Monocytes,balanced,10,True,patient_1016,patient_101|patient_1015|patient_1256|patient_1488,patient_1015|patient_1488,0,0,0.026,0.028,0.0,0.478,True
+FCGR3A+ Monocytes,balanced,11,True,patient_101,patient_1015|patient_1016|patient_1256|patient_1488,patient_1256|patient_1488,0,0,0.028,0.032,0.0,0.442,True
+FCGR3A+ Monocytes,balanced,12,True,patient_1256,patient_101|patient_1015|patient_1016|patient_1488,patient_1016|patient_1488,0,0,0.036,0.042,0.0,0.476,True
+FCGR3A+ Monocytes,balanced,13,True,patient_1488,patient_101|patient_1015|patient_1016|patient_1256,patient_1016|patient_1256,0,0,0.044,0.046,0.0,0.47,True
+FCGR3A+ Monocytes,balanced,14,True,patient_101,patient_1015|patient_1016|patient_1256|patient_1488,patient_1016|patient_1256,0,0,0.05,0.05,0.0,0.436,True
+FCGR3A+ Monocytes,unbalanced,0,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,0,0,0.14,0.148,,0.382,True
+FCGR3A+ Monocytes,unbalanced,1,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_1015|patient_1488,0,0,0.044,0.046,,0.46,True
+FCGR3A+ Monocytes,unbalanced,2,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_101|patient_1015|patient_1016|patient_1256,0,0,0.052,0.054,,0.428,True
+FCGR3A+ Monocytes,unbalanced,3,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_101|patient_1015|patient_1488,0,0,0.056,0.058,,0.458,True
+FCGR3A+ Monocytes,unbalanced,4,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_1015|patient_1488,0,0,0.044,0.046,,0.46,True
+FCGR3A+ Monocytes,unbalanced,5,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_1016|patient_1488,0,0,0.032,0.032,,0.47,True
+FCGR3A+ Monocytes,unbalanced,6,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_101|patient_1015|patient_1016,0,0,0.046,0.052,,0.438,True
+FCGR3A+ Monocytes,unbalanced,7,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_101|patient_1256|patient_1488,0,0,0.026,0.028,,0.468,True
+FCGR3A+ Monocytes,unbalanced,8,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_101|patient_1015,0,0,0.046,0.046,,0.46,True
+FCGR3A+ Monocytes,unbalanced,9,False,,patient_101|patient_1015|patient_1016|patient_1256|patient_1488,patient_101|patient_1016|patient_1256|patient_1488,0,0,0.026,0.032,,0.462,True

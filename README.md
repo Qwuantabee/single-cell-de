@@ -131,10 +131,15 @@ treatment — and randomly splitting the 8 donors into two fake "conditions",
 
 ![real null](figures/real_null.png)
 
-| method | median false positives | max | % of 2,000 genes tested |
-|---|---|---|---|
-| per-cell Wilcoxon | 307 | 988 | 19.8% |
-| pseudobulk | 0 | 1 | 0.0% |
+| method | median false positives | max | median share of the 2,000 genes tested | mean share |
+|---|---|---|---|---|
+| per-cell Wilcoxon | 307 | 988 | 15.4% | 19.8% |
+| pseudobulk | 0 | 1 | 0.0% | 0.0% |
+
+(Share = false positives / genes tested per split, over the 20 splits in
+`results/false_positives.csv`; the median share is 307/2,000 = 15.4%, and
+19.8% is the *mean* share, i.e. a mean of 395.9 calls. An earlier version of
+this row mixed the two statistics.)
 
 The simulation was not exaggerating.
 
@@ -175,6 +180,17 @@ Ranking the *same significant genes* by effect size instead:
 
 Median rank across cell types goes from 50 to 10.
 
+**Which "rank".** Three different rank definitions appear in this README, and
+the numbers are not interchangeable. (a) This table (`results/real_analysis_summary.csv`,
+`scripts/real_analysis.py`): rank *within the genes already significant* at
+BH q < 0.05, ordered by q or by |log₂FC|, median over the 12 ISGs truncated to
+an integer. (b) §7 (`results/celltype_isg_recovery.csv`): the same definition,
+but computed after restricting to donors usable in *every* type, so a few
+medians differ by 1–2 (CD4 73 vs 74, CD8 31 vs 32, FCGR3A+ monocytes 172 vs 170).
+(c) §9 (`results/nbglm_real_summary.csv`): rank among *all tested genes* by q,
+median of the 12 ISGs not truncated (hence values such as 73.5). Only
+comparisons made inside one definition are meaningful.
+
 So: use the p-value as a filter, and the effect size as the ranking. Sorting
 a results table by p-value is close to universal and, at these replicate
 counts, close to arbitrary.
@@ -188,9 +204,16 @@ between two different cell mixtures, not between two expression states. Every
 marker of whichever type became more common comes out "up", with valid
 p-values, for a question nobody asked.
 
-On Kang the composition does move, but only slightly:
+On Kang the composition does move, but only slightly.
 
-| cell type | mean proportion ctrl | stim | log₂ ratio |
+**Sign convention, stated once: the log₂ ratio in this table is stim / ctrl.**
+`results/celltype_composition_shift.csv` stores the *opposite* sign
+(`log2_ratio` = ctrl / stim, because conditions are taken in sorted order:
+`mean_prop_a` is ctrl, `mean_prop_b` is stim; `tests/test_celltype_pseudobulk.py`
+pins this). The README column below is that file's `log2_ratio` with the
+sign flipped, and the proportions are from `celltype_composition_paired.csv`.
+
+| cell type | mean proportion ctrl | stim | log₂ ratio (stim / ctrl) |
 |---|---|---|---|
 | CD14+ Monocytes | 0.254 | 0.238 | −0.10 |
 | Megakaryocytes | 0.015 | 0.012 | −0.30 |
@@ -203,8 +226,9 @@ from 1.51% to 1.22% of cells. CD14+ monocytes also fall (0.254 to 0.238),
 while CD4 T, B and NK cells rise slightly. Every sign here is the reverse of
 what an earlier version of this table claimed — the CSV's `mean_ctrl` and
 `mean_stim` columns had been read in the wrong order. `results/celltype_composition_paired.csv`
-is the source of record; the numbers above are transcribed from it and the
-per-donor proportions agree (CD14+ falls in 7 of 8 donors).
+is the source of record for the proportions (it has no log₂ column; the ratio
+is computed from its `mean_stim` and `mean_ctrl`), and the per-donor
+proportions agree (CD14+ falls in 7 of 8 donors).
 
 Interferon-β does not, here, rearrange the
 PBMC composition much — which is worth stating plainly, because it means this
@@ -270,8 +294,11 @@ distinct genes significant somewhere. But the overlap is far from complete —
 **763** genes are significant pooled and in no cell type, and **1,064** are
 significant in at least one cell type and not pooled. Those two numbers are
 the point: the pooled answer is not a superset or a subset of the stratified
-one, it is a *different* answer, and the difference is entirely about which
-cells are being compared to which.
+one, it is a *different* answer. What this analysis does **not** establish is
+why. The composition shift measured above is small (largest 0.30 log₂), so
+cell-type composition is unlikely to be the whole explanation here; different
+responses across types being averaged together, and differences in which
+genes pass each filter, are other candidates that were not separated.
 
 The interferon programme survives the split intact — all 12 known ISGs are
 significant in all 7 testable cell types — but its *size* is cell-type
