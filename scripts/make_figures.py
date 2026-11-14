@@ -767,18 +767,20 @@ def fig_megakaryocyte():
             label="control cells")
     ax.barh(y, d["stim"], left=d["ctrl"], color="C2", edgecolor="black",
             linewidth=0.5, label="stimulated cells")
-    for yi, tot, share in zip(y, d["total"], d["share_of_type"]):
-        ax.text(tot + 1.5, yi, f"{tot}" + (f" ({share:.0%})" if share > 0.5 else ""),
-                va="center", fontsize=8)
+    for yi, c, st, tot, share in zip(y, d["ctrl"], d["stim"], d["total"],
+                                     d["share_of_type"]):
+        ax.text(tot + 1.5, yi, f"{tot} = {c} + {st}"
+                + (f" ({share:.0%})" if share > 0.5 else ""), va="center", fontsize=8)
     ax.set_yticks(y)
     ax.set_yticklabels(d["donor"].str.replace("_", " "), fontsize=8)
-    ax.set_xlim(0, d["total"].max() * 1.25)
+    ax.set_xlim(0, d["total"].max() * 1.5)
     ax.set(xlabel="megakaryocytes (cells)",
            title=f"One donor supplies {s['largest_donor_share']:.0%} of megakaryocytes\n"
                  f"({int(d['total'].max())} of {int(s['n_cells'])} cells, "
                  f"{len(d)} donors)")
     ax.title.set_fontsize(10)
     ax.legend(frameon=False, fontsize=8, loc="lower right")
+    ax.set_xlabel("megakaryocytes (cells; total = control + stimulated)")
 
     ax = axes[1]
     xs = np.arange(len(sweep))
