@@ -1,9 +1,22 @@
-"""Figures from the simulation study.
+"""Figures for the README: simulation study, real-data checks, model comparisons.
 
-Run after scripts/simulation_study.py:
-    python scripts/make_figures.py
+Every figure reads a committed artefact in results/ and names it in a grey
+footer together with n; nothing is typed in by hand. Titles state the finding,
+and where the finding is a number the title is computed from the CSV, so a
+re-run cannot leave a stale claim on the page.
+
+Run after the producing scripts (simulation_study.py, false_positive_test.py,
+real_analysis.py, mixed_vs_others.py, nbglm_real.py):
+    python scripts/make_figures.py                 # every figure
+    python scripts/make_figures.py null power      # only the named ones
+A figure whose artefact is missing is skipped with a message.
+
+Colours: C0 = pseudobulk, C3 = the method a figure is arguing against
+(per-cell Wilcoxon, NB GLM), C1 = the mixed model.
 """
 
+import math
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +39,30 @@ def _need(name):
     if not path.exists():
         raise SystemExit(f"missing {path}; run scripts/simulation_study.py first")
     return pd.read_csv(path)
+
+
+def _maybe(name, producer, **kwargs):
+    """Read an artefact, or None (with a message) when it was not produced."""
+    path = RESULTS / name
+    if not path.exists():
+        print(f"  (skipping: {path.name} is missing; run {producer})")
+        return None
+    return pd.read_csv(path, **kwargs)
+
+
+def _footer(fig, text):
+    """n and source artefact, bottom-left, small and grey."""
+    fig.text(0.012, 0.012, text, fontsize=6.5, color="0.35",
+             ha="left", va="bottom", linespacing=1.3)
+
+
+def _short(cell_type):
+    return cell_type.replace(" cells", "").replace(" Monocytes", " Mono")
+
+
+def _tick(cell_type):
+    """Two-line tick label (the word Mono wraps onto its own line)."""
+    return _short(cell_type).replace(" Mono", "\nMono")
 
 
 def fig_null():
@@ -199,11 +236,21 @@ def fig_isg_ranking():
     plt.close(fig)
 
 
+FIGURES = {
+    "null": fig_null,
+    "power": fig_power,
+    "sweep": fig_sample_sweep,
+    "normalisation": fig_normalisation,
+    "real_null": fig_real_null,
+    "isg": fig_isg_ranking,
+}
+
+
 if __name__ == "__main__":
-    fig_null()
-    fig_power()
-    fig_sample_sweep()
-    fig_normalisation()
-    fig_real_null()
-    fig_isg_ranking()
+    wanted = sys.argv[1:] or list(FIGURES)
+    unknown = [w for w in wanted if w not in FIGURES]
+    if unknown:
+        raise SystemExit(f"unknown figure(s) {unknown}; choose from {list(FIGURES)}")
+    for name in wanted:
+        FIGURES[name]()
     print(f"figures written to {FIG}")
