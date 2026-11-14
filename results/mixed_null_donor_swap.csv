@@ -1,3 +1,29 @@
-method,mean_false_positives,genes_tested,perms,mean_fdp,permutation_preserved_donors
-pseudobulk,0.0,500,10,0.0,True
-mixed,3.8,500,10,0.0076,True
+cell_type,method,balance,mean_false_positives,perms,genes_tested,per_draw,expected_fp_bh,ratio_observed_expected,permutation_preserved_donors
+CD4 T cells,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+CD4 T cells,pseudobulk,unbalanced,0.1,10,500,0;0;0;0;0;0;0;1;0;0,0.05,2.0,True
+CD4 T cells,mixed,balanced,0.8,10,500,0;2;0;0;3;2;0;1;0;0,0.05,16.0,True
+CD4 T cells,mixed,unbalanced,5.1,10,500,0;7;3;2;16;2;7;4;10;0,0.05,102.0,True
+CD14+ Monocytes,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+CD14+ Monocytes,pseudobulk,unbalanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+CD14+ Monocytes,mixed,balanced,0.6,10,500,0;1;1;0;0;1;1;1;0;1,0.05,11.999999999999998,True
+CD14+ Monocytes,mixed,unbalanced,6.4,10,500,4;14;2;1;20;4;14;2;0;3,0.05,128.0,True
+B cells,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+B cells,pseudobulk,unbalanced,0.1,10,500,0;0;0;0;1;0;0;0;0;0,0.05,2.0,True
+B cells,mixed,balanced,1.4,10,500,2;0;0;0;3;1;1;3;2;2,0.05,28.0,True
+B cells,mixed,unbalanced,5.2,10,500,3;10;1;3;7;0;10;4;8;6,0.05,104.0,True
+NK cells,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+NK cells,pseudobulk,unbalanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+NK cells,mixed,balanced,3.3,10,500,5;4;2;0;4;6;5;0;2;5,0.05,65.99999999999999,True
+NK cells,mixed,unbalanced,9.4,10,500,49;4;1;2;11;12;4;3;1;7,0.05,188.0,True
+CD8 T cells,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+CD8 T cells,pseudobulk,unbalanced,2.2,10,500,22;0;0;0;0;0;0;0;0;0,0.05,44.0,True
+CD8 T cells,mixed,balanced,13.6,10,500,14;10;6;4;21;12;21;21;21;6,0.05,272.0,True
+CD8 T cells,mixed,unbalanced,16.7,10,500,102;7;13;7;8;15;7;3;3;2,0.05,333.99999999999994,True
+FCGR3A+ Monocytes,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+FCGR3A+ Monocytes,pseudobulk,unbalanced,14.7,10,500,147;0;0;0;0;0;0;0;0;0,0.05,293.99999999999994,True
+FCGR3A+ Monocytes,mixed,balanced,8.6,10,500,10;5;5;9;14;6;14;14;0;9,0.05,171.99999999999997,True
+FCGR3A+ Monocytes,mixed,unbalanced,44.6,10,500,281;48;16;4;1;7;48;6;6;29,0.05,892.0,True
+Dendritic cells,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+Dendritic cells,pseudobulk,unbalanced,12.6,10,500,126;0;0;0;0;0;0;0;0;0,0.05,252.0,True
+Dendritic cells,mixed,balanced,8.6,10,500,2;3;3;2;12;23;12;12;9;8,0.05,171.99999999999997,True
+Dendritic cells,mixed,unbalanced,36.2,10,500,251;28;14;0;6;10;28;3;3;19,0.05,724.0,True

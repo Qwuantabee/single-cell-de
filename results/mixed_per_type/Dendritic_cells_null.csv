@@ -1,5 +1,5 @@
 cell_type,method,balance,mean_false_positives,perms,genes_tested,per_draw,expected_fp_bh,ratio_observed_expected,permutation_preserved_donors
-Dendritic cells,pseudobulk,balanced,0.0,2,100,0;0,0.05,0.0,True
-Dendritic cells,pseudobulk,unbalanced,0.0,2,100,0;0,0.05,0.0,True
-Dendritic cells,mixed,balanced,2.5,2,100,4;1,0.05,50.0,True
-Dendritic cells,mixed,unbalanced,0.5,2,100,1;0,0.05,10.0,True
+Dendritic cells,pseudobulk,balanced,0.0,10,500,0;0;0;0;0;0;0;0;0;0,0.05,0.0,True
+Dendritic cells,pseudobulk,unbalanced,12.6,10,500,126;0;0;0;0;0;0;0;0;0,0.05,251.99999999999997,True
+Dendritic cells,mixed,balanced,8.6,10,500,2;3;3;2;12;23;12;12;9;8,0.05,171.99999999999997,True
+Dendritic cells,mixed,unbalanced,36.2,10,500,251;28;14;0;6;10;28;3;3;19,0.05,724.0,True
