@@ -1,202 +1,82 @@
 # Differential expression in single-cell data, tested at the right level
 
-Single-cell RNA-seq gives you tens of thousands of cells, and it is tempting
-to treat each one as a replicate. This project measures what that costs.
+Treating every cell as a replicate is tempting, and this project measures what it costs. On simulated data where nothing changes between conditions, a per-cell Wilcoxon test called **73% of all genes significant** at a 5% false discovery rate; pseudobulk aggregation called none. The sections below repeat the test on real data, then hold two alternatives (a mixed model, a negative-binomial GLM) to the same standard.
 
-The short version: on simulated data where nothing changes between
-conditions, a per-cell Wilcoxon test called **73% of all genes significant**
-at a 5% false discovery rate. Pseudobulk aggregation called none.
+## At a glance
+
+![at a glance](figures/at_a_glance.png)
+
+*A: per-cell testing manufactures false positives on null data, simulated and real; pseudobulk does not. B: it buys no power. C: the donor-intercept mixed model is the pseudobulk test at far higher cost (§8). D: the NB GLM calls more genes but is anti-conservative on B cells and CD14+ monocytes (§9). C and D correct earlier claims of this repo.*
 
 ## The argument
 
-Cells from the same donor are not independent observations. Treating 6,400
-cells from 8 donors as 6,400 independent samples inflates the effective
-sample size by three orders of magnitude, and the resulting p-values do not
-mean what they say. The replicate is the donor, because the donor is what was
-randomised.
-
-This is established — Squair et al. (2021, Nat Commun 12:5692) made the case
-on real data — but it is still the default in most tutorials, so it is worth
-being able to demonstrate rather than cite.
+Cells from one donor are not independent observations. Treating 6,400 cells from 8 donors as 6,400 samples inflates the effective sample size by three orders of magnitude, and the p-values stop meaning what they say. The replicate is the donor, because the donor is what was randomised. This is established (Squair et al. 2021, Nat Commun 12:5692) but still the default in most tutorials, so it is worth demonstrating, not citing.
 
 ## 1. False positives when nothing is happening
 
-500 genes, 8 donors, 400 cells per donor per condition, zero genes truly
-changed. Every significant call is a false positive by construction.
+500 genes, 8 donors, 400 cells per donor per condition, zero genes truly changed: every call is a false positive by construction.
 
 ![null false positives](figures/null_false_positives.png)
 
-| method | genes called (of 500) |
-|---|---|
-| per-cell Wilcoxon | 364.7 (72.9%) |
-| pseudobulk, paired t-test | 0.0 (0.0%) |
+*Per-cell Wilcoxon calls 364.7 of 500 genes (72.9%); pseudobulk paired t calls 0.0 (BH q < 0.05, 10 replicates).*
 
-An *uncorrected* p < 0.05 threshold would call about 25 of 500 false positives
-on average (5% × 500). Under the Benjamini-Hochberg correction both methods
-actually use at q = 0.05, a calibrated test on all-null data calls a mean of
-about **0.05 of 500**, not 25 — BH bounds the false-discovery *proportion*
-among rejections, so a correct procedure returns essentially nothing here.
-That distinction matters for how the mixed-model null below is read.
+The dashed line is the *uncorrected* p < 0.05 expectation (5% × 500 = 25). Under the Benjamini-Hochberg correction both methods use at q = 0.05, a calibrated test on all-null data calls a mean of about **0.05 of 500**, not 25: BH bounds the false-discovery *proportion* among rejections, so a correct procedure returns essentially nothing. That distinction matters for how the mixed-model null in §8 is read.
 
 ## 2. It is not buying power
 
-The obvious defence of per-cell testing is that it is more sensitive. It is
-not — both methods find essentially everything that is really there.
-
-50 of 500 genes given a real 2-fold effect:
-
-| method | genes called | true positives | false positives | power | observed FDP |
-|---|---|---|---|---|---|
-| per-cell Wilcoxon | 376.5 | 50.0 | 326.5 | 1.00 | **0.87** |
-| pseudobulk | 51.3 | 48.8 | 2.5 | 0.98 | **0.05** |
+The obvious defence of per-cell testing is sensitivity. With 50 of 500 genes given a real 2-fold effect, per-cell Wilcoxon calls 376.5 genes (50.0 true, 326.5 false; power 1.00, observed FDP **0.87**) and pseudobulk calls 51.3 (48.8 true, 2.5 false; power 0.98, FDP **0.05**).
 
 ![power vs fdp](figures/power_vs_fdp.png)
 
-Both recover all 50 real genes. The per-cell test also returns 326 that are
-not real, so 87% of its hit list is wrong. It is not finding more, it is
-calling more.
+*Both recover the real genes; per-cell also returns 326 that are not real, so 87% of its hit list is wrong. It is not finding more, it is calling more.*
 
 ## 3. Why — and the test that proves it
 
-A finding like that is only worth something if the mechanism is identified,
-so that you know when it applies.
-
-The claim is that the per-cell test fails because it ignores *sample-level*
-variation: everything that differs between two aliquots of the same donor's
-cells, such as processing day, capture efficiency, or how that individual
-happened to respond. The per-cell test sees thousands of cells all agreeing
-and reads one sample's idiosyncrasy as strong evidence.
-
-If that is the cause, the test should be perfectly well behaved when there is
-no sample-level variation, and degrade as it grows:
+The per-cell test ignores *sample-level* variation: everything that differs between two aliquots of one donor's cells (processing day, capture efficiency, that individual's response). It sees thousands of cells agree and reads one sample's idiosyncrasy as strong evidence. If that is the cause, the test should behave when sample-level variation is zero and degrade as it grows.
 
 ![sample variation sweep](figures/sample_variation_sweep.png)
 
-| sample-level SD | per-cell false positives | pseudobulk |
-|---|---|---|
-| 0.00 | 0.0 | 0.0 |
-| 0.10 | 138.2 | 0.0 |
-| 0.20 | 306.0 | 0.0 |
-| 0.30 | 365.4 | 0.0 |
-| 0.50 | 404.2 | 0.0 |
+*Per-cell false positives (of 500 null genes) at sample-level SD 0.00 / 0.10 / 0.20 / 0.30 / 0.50: 0.0 / 138.2 / 306.0 / 365.4 / 404.2; pseudobulk 0.0 throughout.*
 
-It is exactly calibrated at zero and collapses immediately. The per-cell test
-is not broken in general — it is a valid test of the question "did these
-cells come from the same distribution", which is simply not the question
-anyone is asking. The question is whether the *condition* did something, and
-that has 8 replicates, not 6,400.
-
-This also says when per-cell testing is fine: comparing cell types within one
-sample, where there is no sample-level confound.
+It is exactly calibrated at zero and collapses at once. The per-cell test is not broken in general: it validly tests "did these cells come from the same distribution", which nobody asks. The question is whether the *condition* did something, and that has 8 replicates, not 6,400. Per-cell testing is fine for comparing cell types within one sample, where there is no sample-level confound.
 
 ## 4. Normalisation, and a bias that grows with study size
 
-Building this turned up a second problem that had nothing to do with the
-first.
-
-Normalising pseudobulk profiles by total count assumes every sample contains
-the same amount of RNA. When 50 genes go up strongly they take up more of the
-library, so every other gene's share goes down even though nothing happened
-to it. In the first version of the simulation this shifted every null gene by
-−0.07 log₂ CPM, consistently enough across donors that the paired test called
-163 of them significant — a 57% false discovery rate from a method that was
-otherwise correct.
-
-Switching to median-of-ratios size factors (what DESeq2 uses) fixed it. But
-the interesting part is what happened next: once realistic sample-level noise
-was added, the two normalisations looked identical at 8 donors.
+Total-count normalisation assumes every sample holds the same amount of RNA. When 50 genes go up strongly they take up more of the library, so every other gene's share falls though nothing happened to it. In the first version of the simulation this shifted every null gene by −0.07 log₂ CPM, consistently enough across donors that the paired test called 163 of them significant (a 57% false discovery rate from an otherwise correct method). Median-of-ratios size factors (as in DESeq2) fixed it, and with realistic sample-level noise the two normalisations looked identical at 8 donors.
 
 ![normalisation](figures/normalisation.png)
 
-| donors | median-of-ratios FDP | total-count CPM FDP |
-|---|---|---|
-| 8 | 0.043 | 0.049 |
-| 20 | 0.059 | 0.098 |
-| 40 | 0.059 | **0.192** |
+*False discovery proportion at 8 / 20 / 40 donors: median-of-ratios 0.043 / 0.059 / 0.059, total-count CPM 0.049 / 0.098 / **0.192**.*
 
-Composition bias is a *bias*: it is the same in every sample, so averaging
-over more donors does not reduce it. Sampling noise does shrink. So the ratio
-of bias to noise grows, and a normalisation choice that is invisible on 8
-donors becomes the dominant source of error on 40. This runs against the
-intuition that more data makes methodological choices matter less.
+Composition bias is a *bias*: the same in every sample, so more donors do not average it out while sampling noise shrinks. A choice invisible at 8 donors dominates the error at 40, against the intuition that more data makes methodological choices matter less.
 
 ## 5. The same experiment on real data
 
-Kang et al. 2018: PBMCs from 8 lupus patients, each split into a control and
-an interferon-β-stimulated aliquot (24,673 cells, GEO GSE96583).
-
-Taking **control cells only** — where no donor differs from any other by
-treatment — and randomly splitting the 8 donors into two fake "conditions",
-20 times, in CD14+ monocytes:
+Kang et al. 2018: PBMCs from 8 lupus patients, each split into a control and an interferon-β-stimulated aliquot (24,673 cells, GEO GSE96583). Taking **control cells only**, where no donor differs from any other by treatment, and randomly splitting the 8 donors into two fake "conditions" 20 times, in CD14+ monocytes:
 
 ![real null](figures/real_null.png)
 
-| method | median false positives | max | median share of the 2,000 genes tested | mean share |
-|---|---|---|---|---|
-| per-cell Wilcoxon | 307 | 988 | 15.4% | 19.8% |
-| pseudobulk | 0 | 1 | 0.0% | 0.0% |
+*Per-cell Wilcoxon: median 307 false positives per split (max 988; 15.4% of the 2,000 genes tested), mean 395.9 (19.8%). Pseudobulk: median 0, max 1. The simulation was not exaggerating.*
 
-(Share = false positives / genes tested per split, over the 20 splits in
-`results/false_positives.csv`; the median share is 307/2,000 = 15.4%, and
-19.8% is the *mean* share, i.e. a mean of 395.9 calls. An earlier version of
-this row mixed the two statistics.)
-
-The simulation was not exaggerating.
+(Share = false positives / genes tested per split, over the 20 splits in `results/false_positives.csv`. 15.4% is the *median* share, 307/2,000; 19.8% is the *mean* share. An earlier version of this row mixed the two statistics.)
 
 ## 6. The positive control, and a ranking problem
 
-A method that calls nothing is trivially free of false positives, so the
-other half of the claim has to be checked: does pseudobulk still find the
-real response?
-
-Interferon-β produces one of the best characterised transcriptional
-programmes in immunology, so the answer is known in advance. In CD14+
-monocytes the effects are enormous — CXCL10 +9.8 log₂, IFIT1 +8.6, RSAD2
-+8.3, ISG15 +7.7 — and all are significant.
-
-But ranked by q-value, the median known interferon gene sits at **rank 441**
-in that cell type, and none appear in the top 12.
+A method that calls nothing is trivially free of false positives, so check that pseudobulk still finds the real response. Interferon-β is a well-characterised programme, so the answer is known in advance. In CD14+ monocytes the effects are enormous (CXCL10 +9.8 log₂, IFIT1 +8.6, RSAD2 +8.3, ISG15 +7.7) and all are significant. But ranked by q-value, the median known interferon gene sits at **rank 441** in that type, and none is in the top 12.
 
 ![isg ranking](figures/isg_ranking.png)
 
-The cause is the degrees of freedom. A paired t-test on 8 donors has 7 df,
-which puts a floor under how small a p-value can be: the smallest q reached
-anywhere in that analysis is 1.5 × 10⁻⁶. Hundreds of genes pile up against
-that floor, and their order is then decided by noise. A gene with a modest
-but very consistent change outranks one with a 400-fold change that wobbles
-slightly between donors.
+*Ranking the same significant genes by effect size moves the median interferon-gene rank from 50 to 10 across the seven cell types, and the interferon genes in the top 12 from 9 of 84 to 51 of 84.*
 
-Ranking the *same significant genes* by effect size instead:
+The cause is the degrees of freedom. A paired t-test on 8 donors has 7 df, which floors the p-value (the smallest q anywhere in this analysis is 1.5 × 10⁻⁶). Hundreds of genes pile against the floor and their order is decided by noise, so a modest but very consistent change outranks a 400-fold one that wobbles between donors. Use the p-value as a filter and the effect size as the ranking.
 
-| cell type | median ISG rank by q | by effect size | ISGs in top 12 by q | by effect size |
-|---|---|---|---|---|
-| CD4 T | 74 | 10 | 0 | 8 |
-| CD14+ Mono | 441 | 24 | 0 | 5 |
-| B | 50 | 8 | 3 | 8 |
-| NK | 29 | 6 | 2 | 10 |
-| CD8 T | 32 | 6 | 1 | 9 |
-| FCGR3A+ Mono | 170 | 24 | 0 | 4 |
-| Dendritic | 42 | 11 | 3 | 7 |
+Three "rank" definitions appear in this README and are not interchangeable; compare only inside one.
 
-Median rank across cell types goes from 50 to 10.
+<details><summary>The three rank definitions</summary>
 
-**Which "rank".** Three different rank definitions appear in this README, and
-the numbers are not interchangeable. (a) This table (`results/real_analysis_summary.csv`,
-`scripts/real_analysis.py`): rank *within the genes already significant* at
-BH q < 0.05, ordered by q or by |log₂FC|, median over the 12 ISGs truncated to
-an integer. (b) §7 (`results/celltype_isg_recovery.csv`): the same definition, written by
-a different script (`celltype_analysis.py`); its medians differ by 1–2 from
-(a) for three types (CD4 73 vs 74, CD8 31 vs 32, FCGR3A+ monocytes 172 vs 170).
-The cause of that 1–2 difference was not isolated (re-sorting the saved
-per-type results with different sort algorithms did not reproduce it, so it
-is not tie-breaking alone).
-(c) §9 (`results/nbglm_real_summary.csv`): rank among *all tested genes* by q,
-median of the 12 ISGs not truncated (hence values such as 73.5). Only
-comparisons made inside one definition are meaningful.
+(a) The figure (`results/real_analysis_summary.csv`, `real_analysis.py`): rank *within the genes already significant* at BH q < 0.05, by q or by |log₂FC|, median over the 12 ISGs truncated to an integer. (b) §7 (`results/celltype_isg_recovery.csv`, `celltype_analysis.py`): the same definition from a different script; its medians differ by 1–2 for three types (CD4 73 vs 74, CD8 31 vs 32, FCGR3A+ monocytes 172 vs 170), and the cause was not isolated (re-sorting with different algorithms did not reproduce it, so it is not tie-breaking alone). (c) §9 (`results/nbglm_real_summary.csv`): rank among *all tested genes* by q, median not truncated (hence 73.5).
 
-So: use the p-value as a filter, and the effect size as the ranking. Sorting
-a results table by p-value is close to universal and, at these replicate
-counts, close to arbitrary.
+</details>
 
 ## 7. Cell type first, or the composition shift is the result
 
