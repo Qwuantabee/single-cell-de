@@ -50,10 +50,40 @@ def _maybe(name, producer, **kwargs):
     return pd.read_csv(path, **kwargs)
 
 
-def _footer(fig, text):
-    """n and source artefact, bottom-left, small and grey."""
-    fig.text(0.012, 0.012, text, fontsize=6.5, color="0.35",
+def _wrap_to_figure(fig, text, fontsize):
+    """Greedy word wrap by rendered width, so the footer never leaves the page."""
+    renderer = fig.canvas.get_renderer()
+    probe = fig.text(0, 0, "", fontsize=fontsize)
+    limit = 0.965 * fig.get_figwidth() * fig.dpi
+    lines = []
+    for para in text.split("\n"):
+        line = ""
+        for word in para.split(" "):
+            trial = (line + " " + word).strip()
+            probe.set_text(trial)
+            if line and probe.get_window_extent(renderer).width > limit:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        lines.append(line)
+    probe.remove()
+    return lines
+
+
+def _save(fig, name, footer):
+    """Write n and the source artefact in a grey footer, then save at 150 dpi.
+
+    The footer is wrapped to the figure width and the plot area is shrunk to
+    leave room for it, so a long source list never runs off the page.
+    """
+    lines = _wrap_to_figure(fig, footer, 6.5)
+    h = fig.get_figheight()
+    fig.text(0.012, 0.05 / h, "\n".join(lines), fontsize=6.5, color="0.35",
              ha="left", va="bottom", linespacing=1.3)
+    fig.tight_layout(rect=(0, (0.1 + 0.105 * len(lines)) / h, 1, 1))
+    fig.savefig(FIG / name, dpi=150)
+    plt.close(fig)
 
 
 def _short(cell_type):
@@ -236,6 +266,58 @@ def fig_isg_ranking():
     plt.close(fig)
 
 
+def fig_mixed_null():
+    """Mixed model and pseudobulk make the same calls on the donor-swap null."""
+    swap = _maybe("mixed_null_donor_swap.csv", "scripts/mixed_vs_others.py")
+    draws = _maybe("mixed_null_draws.csv", "scripts/mixed_vs_others.py")
+    if swap is None or draws is None:
+        return
+    bal = swap[swap["balance"] == "balanced"]
+    pb = bal[bal["method"] == "pseudobulk"].set_index("cell_type")
+    mx = bal[bal["method"] == "mixed"].set_index("cell_type").loc[pb.index]
+    bd = draws[draws["balance"] == "balanced"]
+    n_draws = len(bd)
+    same = int((bd["fp_pseudobulk"] == bd["fp_mixed"]).sum())
+    any_fp = int(((bd["fp_pseudobulk"] > 0) | (bd["fp_mixed"] > 0)).sum())
+    n_genes = int(pb["genes_tested"].iloc[0])
+    ref = float(pb["expected_fp_bh"].iloc[0])
+    by_type = " + ".join(str(int(v)) for v in pb["n_distinct_draws"])
+
+    fig, ax = plt.subplots(figsize=(6.5, 4))
+    x = np.arange(len(pb))
+    for off, tab, color, label in ((-0.2, pb, "C0", "pseudobulk paired t"),
+                                   (0.2, mx, "C1", "mixed (1 | donor)")):
+        mean = tab["mean_false_positives"].to_numpy()
+        lo = tab["fp_ci_lo"].to_numpy()
+        hi = tab["fp_ci_hi"].to_numpy()
+        ax.bar(x + off, mean, width=0.4, label=label, color=color,
+               edgecolor="black", linewidth=0.5, yerr=[mean - lo, hi - mean],
+               capsize=2, error_kw={"lw": 0.8})
+        for xi, m, h in zip(x + off, mean, hi):
+            ax.text(xi, h + 0.012, f"{m:.3f}", ha="center", va="bottom",
+                    fontsize=6.5)
+    ax.axhline(ref, ls="--", lw=1, color="grey",
+               label=f"{ref:.2f}: BH expectation for an exact null")
+    top = max(pb["fp_ci_hi"].max(), mx["fp_ci_hi"].max())
+    ax.set_ylim(0, top * 1.15 + 0.03)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{_tick(ct)}\n{int(d)} donors\n{int(n)} draws"
+                        for ct, d, n in zip(pb.index, pb["n_donors_used"],
+                                            pb["n_distinct_draws"])],
+                       fontsize=7.5)
+    ax.set(ylabel=f"false positives per draw\n(BH q < 0.05, {n_genes} null genes)",
+           title="Mixed model and pseudobulk make the same null calls:\n"
+                 f"the same false-positive count in {same} of {n_draws} balanced draws")
+    ax.title.set_fontsize(10)
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    _save(fig, "mixed_vs_pseudobulk_null.png",
+          f"n = {n_draws} balanced donor-swap draws per method ({by_type} by type), "
+          f"{n_genes} small-effect genes each; {any_fp} draws had any false "
+          "positive. Bars: mean; whiskers: bootstrap 95% CI. A swap null can show "
+          "anti-conservatism, not calibration.\n"
+          "source: results/mixed_null_donor_swap.csv, results/mixed_null_draws.csv")
+
+
 FIGURES = {
     "null": fig_null,
     "power": fig_power,
@@ -243,6 +325,7 @@ FIGURES = {
     "normalisation": fig_normalisation,
     "real_null": fig_real_null,
     "isg": fig_isg_ranking,
+    "mixed_null": fig_mixed_null,
 }
 
 
