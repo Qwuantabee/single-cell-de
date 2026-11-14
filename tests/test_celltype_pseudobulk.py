@@ -120,8 +120,20 @@ def test_stratified_index_and_columns():
     for col in ("log2fc", "pval", "qval", "qval_global", "n_donors"):
         assert col in results.columns
     assert (results["n_donors"] == 6).all()
-    # global BH can never be smaller than the within-type correction
-    assert (results["qval_global"] >= results["qval"] - 1e-12).all()
+    # qval is BH within each cell type; qval_global is BH over every
+    # cell-type x gene test. Each must equal an independent BH computation.
+    # (The previous assertion, qval_global >= qval, is not a property of BH:
+    # a larger family can still give a smaller adjusted value when it adds
+    # many small p-values, and it fails on the real Kang results.)
+    from scpipe.de import _bh
+    expected_global = _bh(results["pval"].to_numpy())
+    assert np.allclose(results["qval_global"].to_numpy(), expected_global)
+    for ct in results.index.get_level_values("cell_type").unique():
+        sub = results.xs(ct, level="cell_type")
+        assert np.allclose(sub["qval"].to_numpy(), _bh(sub["pval"].to_numpy()))
+    # the two corrections are different families, so they must not be the
+    # same column in disguise
+    assert results["qval"].nunique() > 1
 
 
 def test_skips_cell_types_with_too_few_donors():
