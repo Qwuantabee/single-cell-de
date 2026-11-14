@@ -80,124 +80,50 @@ Three "rank" definitions appear in this README and are not interchangeable; comp
 
 ## 7. Cell type first, or the composition shift is the result
 
-Everything above aggregates a donor's cells and compares conditions. That is
-correct for the donor structure and still wrong for one specific reason: if
-the *mix* of cell types differs between conditions, the comparison is
-between two different cell mixtures, not between two expression states. Every
-marker of whichever type became more common comes out "up", with valid
-p-values, for a question nobody asked.
+If the *mix* of cell types differs between conditions, a pooled comparison compares two cell mixtures, not two expression states: every marker of whichever type became more common comes out "up", with valid p-values, for a question nobody asked. On Kang the composition moves only slightly. Mean proportion ctrl → stim, with the log₂ ratio stim / ctrl: CD14+ monocytes 0.254 → 0.238 (−0.10), megakaryocytes 0.015 → 0.012 (−0.30), CD4 T 0.440 → 0.448 (+0.03), NK 0.067 → 0.068 (+0.01), B 0.098 → 0.102 (+0.07).
 
-On Kang the composition does move, but only slightly.
+The largest shift is 0.30 log₂ (1.2×) and a *decrease* (megakaryocytes, 1.51% → 1.22% of cells); CD14+ monocytes also fall, in 7 of 8 donors. Every sign is the reverse of an earlier version of this table, whose `mean_ctrl` and `mean_stim` columns had been read in the wrong order. Interferon-β does not rearrange PBMC composition much, so this dataset is *not* the case where pooling fails for that reason; a disease contrast, where composition effects usually bite, would be.
 
-**Sign convention, stated once: the log₂ ratio in this table is stim / ctrl.**
-`results/celltype_composition_shift.csv` stores the *opposite* sign
-(`log2_ratio` = ctrl / stim, because conditions are taken in sorted order:
-`mean_prop_a` is ctrl, `mean_prop_b` is stim; `tests/test_celltype_pseudobulk.py`
-pins this). The README column below is that file's `log2_ratio` with the
-sign flipped, and the proportions are from `celltype_composition_paired.csv`.
+<details><summary>Sign convention</summary>
 
-| cell type | mean proportion ctrl | stim | log₂ ratio (stim / ctrl) |
+The log₂ ratio above is stim / ctrl, the opposite of `results/celltype_composition_shift.csv` (`log2_ratio` = ctrl / stim; `mean_prop_a` is ctrl, `mean_prop_b` is stim; `tests/test_celltype_pseudobulk.py` pins this). Proportions come from `celltype_composition_paired.csv`, the source of record (no log₂ column).
+
+</details>
+
+Stratifying changes the answer anyway, because cell types respond differently (CD14+ monocytes 2,952 significant genes, CD8 T cells 88):
+
+<details><summary>Per-type counts (table)</summary>
+
+| cell type | donors | genes tested | significant, BH within type (global) |
 |---|---|---|---|
-| CD14+ Monocytes | 0.254 | 0.238 | −0.10 |
-| Megakaryocytes | 0.015 | 0.012 | −0.30 |
-| CD4 T cells | 0.440 | 0.448 | +0.03 |
-| NK cells | 0.067 | 0.068 | +0.01 |
-| B cells | 0.098 | 0.102 | +0.07 |
+| CD14+ Monocytes | 8 | 5,364 | 2,952 (2,578) |
+| CD4 T cells | 8 | 7,048 | 986 (1,191) |
+| FCGR3A+ Monocytes | 5 | 2,673 | 746 (717) |
+| Dendritic cells | 5 | 2,078 | 565 (551) |
+| B cells | 8 | 3,804 | 563 (661) |
+| NK cells | 7 | 2,436 | 401 (459) |
+| CD8 T cells | 5 | 2,081 | 88 (187) |
+| Megakaryocytes | 1 | — | not testable |
 
-Largest shift 0.30 log₂ (1.2×), and it is a *decrease*: megakaryocytes fall
-from 1.51% to 1.22% of cells. CD14+ monocytes also fall (0.254 to 0.238),
-while CD4 T, B and NK cells rise slightly. Every sign here is the reverse of
-what an earlier version of this table claimed — the CSV's `mean_ctrl` and
-`mean_stim` columns had been read in the wrong order. `results/celltype_composition_paired.csv`
-is the source of record for the proportions (it has no log₂ column; the ratio
-is computed from its `mean_stim` and `mean_ctrl`), and the per-donor
-proportions agree (CD14+ falls in 7 of 8 donors).
+</details>
 
-Interferon-β does not, here, rearrange the
-PBMC composition much — which is worth stating plainly, because it means this
-dataset is *not* the case where pooling fails for that reason, and a
-different dataset (or a disease contrast, which is where composition effects
-usually bite) would be.
+**All 8 cell types are covered: 7 by an expression test, 8 by the composition test.** Megakaryocytes get a composition result (the largest shift above; paired t = −0.91, p = 0.39 on all 8 donors) and no expression result, and that exclusion is not a threshold that could be relaxed (an earlier version implied it was, by quoting only the ≥25-cell rule).
 
-Stratifying by cell type changes the answer anyway, and for a second reason:
-different cell types have genuinely different responses.
+![megakaryocyte donors](figures/megakaryocyte_donors.png)
 
-| cell type | donors | genes tested | significant (BH within type) | (BH global) |
-|---|---|---|---|---|
-| CD14+ Monocytes | 8 | 5,364 | 2,952 | 2,578 |
-| CD4 T cells | 8 | 7,048 | 986 | 1,191 |
-| FCGR3A+ Monocytes | 5 | 2,673 | 746 | 717 |
-| Dendritic cells | 5 | 2,078 | 565 | 551 |
-| B cells | 8 | 3,804 | 563 | 661 |
-| NK cells | 7 | 2,436 | 401 | 459 |
-| CD8 T cells | 5 | 2,081 | 88 | 187 |
-| Megakaryocytes | 1 | — | not testable | — |
+*132 cells across 8 donors, but `patient_1039` supplies 111 (84%); no cell-count threshold leaves a usable design.*
 
-**All 8 cell types in the dataset are covered, 7 by an expression test and
-8 by the composition test.** Megakaryocytes get a composition result — they
-are the largest shift in the table above (−0.30 log₂, 1.51% → 1.22% of
-cells, paired t = −0.91, p = 0.39 on all 8 donors) — and they do *not* get an
-expression result. That exclusion is not a threshold that could be relaxed,
-and the earlier version of this README implied it was by quoting only the
-≥25-cell rule. `scripts/megakaryocyte_check.py` settles it with the counts:
+≥25 through ≥3 cells leave 1 donor, ≥2 leaves 2 (a paired t on 1 df) and ≥1 leaves 4; the loosest pairs profiles of 1 to 58 cells as equally informative replicates, with 84% of the type from one donor, and it calls 0 of 85 genes. That is a power statement, not a biological one: megakaryocytes may respond, this dataset cannot say.
 
-| donor | ctrl | stim | total |
-|---|---|---|---|
-| patient_1039 | 53 | 58 | 111 |
-| patient_1256 | 2 | 4 | 6 |
-| patient_1244 | 1 | 3 | 4 |
-| patient_1015 | 1 | 3 | 4 |
-| patient_1488 | 4 | 0 | 4 |
-| patient_101 | 1 | 0 | 1 |
-| patient_1016 | 1 | 0 | 1 |
-| patient_107 | 0 | 1 | 1 |
+<details><summary>Megakaryocyte power numbers</summary>
 
-132 cells across 8 donors, but `patient_1039` supplies **111 of them
-(84%)**.
+At the loosest threshold 85 genes survive filtering, the median paired log₂ SD is 0.80, and the minimum detectable effect at 80% power is **1.71 log₂** (exact noncentral-t, the figure to use; 1.67 log₂, 3.2×, by the central-t approximation; **7.75 log₂** with Bonferroni over 85 genes). The largest observed |log₂FC| is 3.49 (ISG15): above the per-gene minimum and well below the Bonferroni one, so one gene responding that much is not ruled out but nothing could survive correction. (An earlier sentence called 1.67 "larger than anything in the interferon programme here"; the observed ISG15 value contradicts that.) Files: `results/megakaryocyte_threshold_sweep.csv`, `megakaryocyte_summary.csv` (`expression_test_reliable = False`), `megakaryocyte_donor_counts.csv`.
 
-No threshold fixes this, and that is the point the earlier README obscured.
-Sweeping it (`results/megakaryocyte_threshold_sweep.csv`): ≥25 cells → 1
-donor; ≥10 → 1; ≥5 → 1; ≥3 → 1; ≥2 → 2; ≥1 → 4. A paired design only
-appears at ≥1 cell, which is not a design: it would pair 58-cell profiles
-against 1-cell profiles and call them equally informative replicates, with
-84% of the type from one donor.
+</details>
 
-Run at that loosest threshold the test has almost nothing to work with: 85
-genes survive filtering, the median paired log₂ SD is 0.80, and the minimum
-detectable effect at 80% power is **1.67 log₂ (3.2×)** by the central-t
-approximation (**1.71 log₂** from the exact noncentral-t calculation, which
-is the figure to use; over 85 genes a Bonferroni correction raises it to
-**7.75 log₂**) and 0 genes are called. For scale, the largest observed
-|log₂FC| in that fit is 3.49 (ISG15): above the per-gene MDE and well below
-the Bonferroni one, so a single gene's response of that size is not ruled out
-by the power calculation but nothing could survive a correction over 85 genes.
-That is a power statement, not a biological one: megakaryocytes may respond,
-this dataset cannot say. (An earlier sentence called 1.67 "larger than
-anything in the interferon programme here"; the observed ISG15 value
-contradicts that.) `results/megakaryocyte_summary.csv` records
-`expression_test_reliable = False` alongside the numbers,
-`results/megakaryocyte_threshold_sweep.csv` the full sweep, and
-`results/megakaryocyte_donor_counts.csv` the counts above.
+Pooled over all cells, **3,211** genes are significant; stratified, **3,512** distinct genes are significant somewhere. **763** are significant pooled and in no cell type and **1,064** in at least one type and not pooled, so the pooled answer is a *different* answer, not a superset or subset. This analysis does **not** establish why. The composition shift is small (largest 0.30 log₂), so composition is unlikely to be the whole explanation; different responses being averaged, and different gene filters, are other candidates that were not separated. Only 0.52% of the 763 pooled-only genes (4 genes) are among the top-30 markers of any cell type (`pooled_sig_marker_share` in `results/celltype_analysis_summary.csv`), where a composition artefact would put marker genes.
 
-Pooled over all cells: **3,211** genes significant. Stratified: **3,512**
-distinct genes significant somewhere. But the overlap is far from complete —
-**763** genes are significant pooled and in no cell type, and **1,064** are
-significant in at least one cell type and not pooled. Those two numbers are
-the point: the pooled answer is not a superset or a subset of the stratified
-one, it is a *different* answer. What this analysis does **not** establish is
-why. The composition shift measured above is small (largest 0.30 log₂), so
-cell-type composition is unlikely to be the whole explanation here; different
-responses across types being averaged together, and differences in which
-genes pass each filter, are other candidates that were not separated. One
-direct measurement points the same way: only 0.52% of the 763 pooled-only genes
-(4 genes) are among the top-30 markers of any cell type
-(`pooled_sig_marker_share` in `results/celltype_analysis_summary.csv`), where a
-composition artefact would put marker genes there.
-
-The interferon programme survives the split intact — all 12 known ISGs are
-significant in all 7 testable cell types — but its *size* is cell-type
-specific: 2,952 genes in CD14+ monocytes against 88 in CD8 T cells. A single
-pooled number (3,211) describes neither.
+All 12 known ISGs are significant in all 7 testable types, but the programme's *size* is cell-type specific: 2,952 genes in CD14+ monocytes against 88 in CD8 T cells. A single pooled number (3,211) describes neither.
 
 ## 8. Mixed-effects models: the middle ground, measured on all seven cell types
 
