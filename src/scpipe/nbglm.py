@@ -38,6 +38,8 @@ What comes out is a p-value per gene and BH q-values, so the result can be
 dropped straight next to `de.pseudobulk_de` in a comparison.
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -48,12 +50,27 @@ from .pseudobulk import aggregate, filter_genes, size_factors
 
 DISP_FLOOR = 1e-4
 
+# A fitted condition coefficient larger than this many log2 units (a
+# million-fold) is not an estimate: it is a (quasi-)separated gene, where one
+# condition has zero counts in every donor and the likelihood has no finite
+# maximum. The Wald test is not valid there. The threshold is a flag, not an
+# inferential choice: separated genes are reported as their own category and
+# nothing is dropped.
+SEPARATION_LOG2 = 20.0
 
-def _log2cpm_means(counts, groups_a, groups_b):
-    """Mean log2 CPM per group, for reporting fold change only."""
-    lib = counts.sum(axis=1)
-    lib = np.where(lib > 0, lib, 1.0)
-    l2 = np.log2(counts / lib[:, None] * 1e6 + 1.0)
+
+def _log2norm_means(counts, groups_a, groups_b, sf):
+    """Mean log2 of size-factor-normalised counts per group (fold change).
+
+    Uses the SAME normalisation as `de.pseudobulk_de` (counts / median-of-
+    ratios size factor, +1, log2), so `log2fc` of the two methods is a
+    like-for-like quantity. An earlier version used total-count CPM here, which
+    differs from the pseudobulk arm by a per-sample composition offset: the two
+    log2FC columns then disagreed by a mean of 0.45 log2 on CD14+ monocytes
+    while the README said they agree to three decimals.
+    """
+    sf = np.asarray(sf, dtype=float)
+    l2 = np.log2(counts / sf[:, None] + 1.0)
     return l2[groups_a].mean(axis=0), l2[groups_b].mean(axis=0)
 
 
@@ -142,8 +159,13 @@ def _shrink(disp_mom, disp_trend, n_samples, n_params):
     blended = np.exp(w * np.log(np.clip(disp_mom, DISP_FLOOR, 10.0))
                      + (1 - w) * np.log(np.clip(disp_trend, DISP_FLOOR, 10.0)))
     # Never let shrinkage push a gene BELOW the trend. Shrinking downward is
-    # the direction that manufactures false positives, and the measured FDR
-    # at 6 donors said so: 0.066 with the floor, 0.13 without it.
+    # the direction that manufactures false positives. CAVEAT on provenance:
+    # this floor was added while tuning on the repo's own simulator at 6
+    # donors (an earlier iteration measured an FDR of 0.066 with the floor and
+    # 0.13 without it; those are not re-measured figures), so the simulated
+    # power and FDP in scripts/nbglm_study.py are not out-of-sample for this
+    # choice. The simulator also draws negative-binomial counts, the GLM's own
+    # model. Real-data behaviour is reported separately (scripts/nbglm_real.py).
     return np.clip(np.maximum(blended, disp_trend), DISP_FLOOR, 10.0)
 
 
@@ -154,7 +176,13 @@ def nbglm_de(adata, condition_key, sample_key, group_a, group_b, layer=None,
 
     Returns the same columns as `de.pseudobulk_de` so the two can be put in
     the same table: gene, mean_a, mean_b, log2fc, pval, qval, n_a, n_b,
-    plus dispersion and log2fc_glm.
+    plus dispersion, log2fc_glm and fit_status.
+
+    log2fc is on the same normalisation as de.pseudobulk_de (median-of-ratios
+    size factors), so the two are directly comparable. log2fc_glm is the model
+    coefficient and is NaN for failed fits; for separated genes
+    (fit_status == "separated", |log2fc_glm| > SEPARATION_LOG2) it is
+    unbounded and must not be read as an effect size.
     """
     mat, meta = aggregate(adata, sample_key=sample_key,
                           group_key=condition_key, layer=layer,
@@ -168,7 +196,15 @@ def nbglm_de(adata, condition_key, sample_key, group_a, group_b, layer=None,
         raise ValueError(f"need at least 4 pseudobulk samples, got {len(mat)}")
 
     sf = np.array(size_factors(mat).to_numpy(), dtype=float)
-    sf[sf <= 0] = 1.0
+    bad_sf = int((~(sf > 0)).sum())
+    if bad_sf:
+        # a zero / negative / NaN size factor means a sample with no usable
+        # counts; replacing it by 1 keeps the fit running but the sample is
+        # then not depth-corrected, so say so rather than mask it
+        warnings.warn(f"{bad_sf} sample(s) with a non-positive size factor "
+                      "were set to 1.0; their depth is NOT corrected",
+                      RuntimeWarning, stacklevel=2)
+    sf[~(sf > 0)] = 1.0
     offset = np.log(sf)
     counts = mat.to_numpy(dtype=float)
 
@@ -228,19 +264,27 @@ def nbglm_de(adata, condition_key, sample_key, group_a, group_b, layer=None,
 
     # --- Wald test on the condition coefficient ---------------------------
     pvals = np.full(len(genes), 1.0)
-    coefs = np.zeros(len(genes))
+    coefs = np.full(len(genes), np.nan)
     ses = np.full(len(genes), np.nan)
+    status = np.full(len(genes), "ok", dtype=object)
     for g in range(len(genes)):
         y = counts[:, g]
         if y.max() <= 0:
             pvals[g] = 1.0                  # nothing to test
+            status[g] = "no_counts"
             continue
         b, cov, _ = _nb_irls(y, X, offset, disp[g])
         var = cov[1, 1]
         if not np.isfinite(var) or var <= 0:
+            # p is left at 1 (so the BH family keeps its size and the gene is
+            # never called) but the coefficient is NOT reported as 0: that
+            # would invent an estimate. These are failed fits, not nulls.
             pvals[g] = 1.0
+            status[g] = "failed"
             continue
         coefs[g] = b[1]
+        if abs(b[1]) / np.log(2.0) > SEPARATION_LOG2:
+            status[g] = "separated"
         ses[g] = np.sqrt(var)
         z = b[1] / ses[g]
         # Student-t, not normal. The dispersion is estimated from few
@@ -251,14 +295,15 @@ def nbglm_de(adata, condition_key, sample_key, group_a, group_b, layer=None,
 
     is_a = cond == 0.0
     is_b = cond == 1.0
-    mean_a, mean_b = _log2cpm_means(counts, is_a, is_b)
+    mean_a, mean_b = _log2norm_means(counts, is_a, is_b, np.exp(offset))
 
     return pd.DataFrame({
         "gene": genes,
         "mean_a": mean_a,
         "mean_b": mean_b,
-        "log2fc": mean_a - mean_b,                 # log2 CPM, as in de.py
+        "log2fc": mean_a - mean_b,    # log2 of size-factor-normalised counts
         "log2fc_glm": -coefs / np.log(2.0),        # model coefficient
+        "fit_status": status,    # ok / separated / failed / no_counts
         "pval": pvals,
         "qval": _bh(pvals),
         "n_a": int(is_a.sum()),

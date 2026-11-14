@@ -188,3 +188,67 @@ def test_result_shape_matches_pseudobulk():
         assert col in pb.columns
     assert nb.index.name == "gene"
     assert len(nb) > 0
+
+
+def test_log2fc_uses_the_same_normalisation_as_pseudobulk():
+    """The two arms' log2fc must be one quantity, not two.
+
+    The GLM used to report total-count CPM log2 differences while the
+    pseudobulk arm used median-of-ratios size factors. With 60 of 300 genes
+    strongly up, total-count CPM shifts every null gene by a per-sample
+    composition offset, so the columns disagreed by a visible mean offset
+    while the README said they agreed to three decimals.
+    """
+    adata, _ = simulate.simulate(n_genes=300, n_donors=6, n_de=60,
+                                 effect=2.0, seed=11)
+    nb = nbglm.nbglm_de(adata, "condition", "donor", "stim", "ctrl")
+    pb = de.pseudobulk_de(adata, "condition", "donor", "stim", "ctrl",
+                          paired=True)
+    shared = nb.index.intersection(pb.index)
+    assert len(shared) > 200
+    diff = (nb.loc[shared, "log2fc"] - pb.loc[shared, "log2fc"]).abs()
+    assert diff.max() < 1e-9, f"max |nb - pb| log2fc = {diff.max():.3g}"
+
+
+def test_separated_and_failed_fits_are_their_own_category():
+    """A gene with counts in one condition only has no finite coefficient.
+
+    It must be flagged (fit_status), keep p <= 1 without being called, and a
+    failed fit must not be reported as a zero effect.
+    """
+    import scipy.sparse as sp
+
+    adata, _ = _small(n_donors=6, n_genes=60, n_de=6, seed=7)
+    X = adata.X.toarray() if sp.issparse(adata.X) else np.array(adata.X)
+    stim = (adata.obs["condition"] == "stim").to_numpy()
+    X[~stim, 5] = 0                 # gene_0005: counts in stim cells only
+    X[stim, 5] = 40
+    adata.X = sp.csr_matrix(X)
+    r = nbglm.nbglm_de(adata, "condition", "donor", "stim", "ctrl")
+    assert "fit_status" in r.columns
+    assert set(r["fit_status"]) <= {"ok", "separated", "failed", "no_counts"}
+    row = r.loc["gene_0005"]
+    assert row["fit_status"] in ("separated", "failed")
+    assert row["qval"] >= 0.05 or not np.isfinite(row["qval"])
+    if row["fit_status"] == "failed":
+        assert np.isnan(row["log2fc_glm"])
+    else:
+        assert abs(row["log2fc_glm"]) > nbglm.SEPARATION_LOG2
+    ok = r[r["fit_status"] == "ok"]
+    assert len(ok) > 0.7 * len(r)
+    assert (ok["log2fc_glm"].abs() <= nbglm.SEPARATION_LOG2).all()
+
+
+def test_non_positive_size_factor_warns_instead_of_masking(monkeypatch):
+    """sf <= 0 used to be replaced by 1.0 silently."""
+    adata, _ = _small(n_donors=6, n_genes=40, n_de=4, seed=8)
+    real = nbglm.size_factors
+
+    def broken(mat):
+        out = real(mat).copy()
+        out.iloc[0] = 0.0
+        return out
+
+    monkeypatch.setattr(nbglm, "size_factors", broken)
+    with pytest.warns(RuntimeWarning, match="non-positive size factor"):
+        nbglm.nbglm_de(adata, "condition", "donor", "stim", "ctrl")
