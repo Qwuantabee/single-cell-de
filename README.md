@@ -228,6 +228,64 @@ significant in all 7 cell types — but its *size* is cell-type specific:
 2,952 genes in CD14+ monocytes against 88 in CD8 T cells. A single pooled
 number (3,211) describes neither.
 
+## 8. Mixed-effects models: the middle ground
+
+Pseudobulk is right about the degrees of freedom and wasteful about the
+cells. A mixed model keeps both: `expression ~ condition + (1 | donor)`
+estimates the condition effect from the within-donor contrast while treating
+donor as a variance component rather than a replicate.
+
+On the CD4 T cell subset (11,238 cells, 7,048 genes, 8 donors):
+
+| method | genes called at FDR 5% | wall clock | Jaccard vs mixed |
+|---|---|---|---|
+| per-cell Wilcoxon | 2,112 | 8.0 s | 0.649 |
+| pseudobulk paired t | 986 | 0.6 s | 0.526 |
+| mixed (1 \| donor) | 1,875 | 105.8 s | — |
+
+The fold changes from the two donor-aware methods are identical: Pearson r =
+1.000 and Spearman ρ = 1.000 on log₂FC. The mixed model is not estimating a
+different effect, it is estimating the same effect with more data per donor
+hence tighter standard errors, which is why it calls 1,875 where pseudobulk
+calls 986. All 12 ISGs are significant under all three, at median ranks 97,
+74 and 76 respectively.
+
+Two honest problems, both measured:
+
+**The donor-swap null.** Permuting which of a donor's two aliquots is called
+"stim" makes the true answer "nothing" while leaving the donor structure
+intact (10 permutations, 500 genes each):
+
+| method | false positives per 500 genes | FDP |
+|---|---|---|
+| pseudobulk | 0.2 | 0.000 |
+| mixed | 8.7 | 0.017 |
+
+The mixed model is *not* calibrated as tightly here: 8.7 against a nominal
+allowance of up to 25, so it is conservative rather than broken, but it is
+~40× looser than the paired t-test. The reason is in the variance component:
+median donor variance 0.021, and 2,444 of 7,048 genes (35%) at or below 1e-6.
+With two samples per donor the random intercept is estimated from one pair,
+so it sits on the boundary and the standard error on the condition effect is
+then estimated from an almost-pooled model — more liberal than the exact
+paired t-test without being as liberal as per-cell.
+
+**The cost.** One model per gene is 176× the paired t-test (105.8 s vs 0.6 s
+for 7,048 genes; 15.0 ms/gene). Per-cell rather than per-profile fits are
+worse still: on a donor-stratified subsample of 3,179 cells (28% of the
+subset) and 400 genes, 8.7 s = 21.7 ms/gene, projecting to 154 s for the
+full gene set at that cell count, and the per-cell fold changes only
+correlate r = 0.620 with the pseudobulk versions because the subsample throws
+away cells. 100% of fits converged under Powell; the statsmodels default
+L-BFGS solver raised `LinAlgError: Singular matrix` on roughly two thirds of
+*gene* fits when this was first written, which is why the default here is
+Powell.
+
+The verdict: the mixed model is the right tool when cells are the only
+replication available (one sample per donor, many cells). When a paired
+design exists with few donors, the paired t-test on pseudobulk costs 0.6 s,
+has a tighter null, and estimates the same effect size to three decimals.
+
 ## How the simulation got fixed
 
 The first version of this study produced the opposite of the published

@@ -259,7 +259,7 @@ def main():
     summary = pd.DataFrame([{
         "cell_type": CELL_TYPE,
         "n_cells": int(sub.n_obs),
-        "n_genes_tested": int(len(logcpm)),
+        "n_genes_tested": int(logcpm.shape[1]),
         "percell_sig": len(s_pc),
         "pseudobulk_sig": len(s_pb),
         "mixed_sig": len(s_mx),

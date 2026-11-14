@@ -1,0 +1,2 @@
+cell_type,n_cells,n_genes_tested,percell_sig,pseudobulk_sig,mixed_sig,mixed_converged,mixed_pct_converged,jaccard_pb_mx,jaccard_percell_mx,lfc_pearson_pb_mx,lfc_spearman_pb_mx,mixed_ms_per_gene_pseudobulk,percell_mixed_cells_fitted,percell_mixed_genes_fitted,percell_mixed_s,percell_mixed_projected_full_s,percell_mixed_pct_converged,null_fp_pseudobulk,null_fp_mixed,null_genes,timestamp
+CD4 T cells,11238,7048,2112,986,1875,7048,100.0,0.5259,0.6489,1.0,1.0,15.01,3179,400,8.7,153.6,100.0,0.2,8.7,500,2026-11-13T21:44:37

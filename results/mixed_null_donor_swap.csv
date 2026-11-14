@@ -1,0 +1,3 @@
+method,mean_false_positives,genes_tested,perms,mean_fdp
+pseudobulk,0.2,500,10,0.0004
+mixed,8.7,500,10,0.0174
