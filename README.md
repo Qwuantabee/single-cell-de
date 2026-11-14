@@ -350,10 +350,10 @@ far below 25 and mixed below 25, so the conclusion is unchanged; the exact
 false-positive counts on a 10-permutation null with 500 genes are noisy in the
 first place.
 
-**The cost.** One model per gene is 176× the paired t-test (105.8 s vs 0.6 s
-for 7,048 genes; 15.0 ms/gene). Per-cell rather than per-profile fits are
+**The cost.** One model per gene is 174× the paired t-test (104.6 s vs 0.6 s
+for 7,048 genes; 14.8 ms/gene). Per-cell rather than per-profile fits are
 worse still: on a donor-stratified subsample of 3,179 cells (28% of the
-subset) and 400 genes, 8.7 s = 21.7 ms/gene, projecting to 154 s for the
+subset) and 400 genes, 8.2 s = 20.5 ms/gene, projecting to 143.7 s for the
 full gene set at that cell count, and the per-cell fold changes only
 correlate r = 0.620 with the pseudobulk versions because the subsample throws
 away cells. 100% of fits converged under Powell; the statsmodels default
