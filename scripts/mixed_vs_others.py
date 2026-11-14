@@ -274,8 +274,19 @@ def run_type(adata, cell_type, null_perms=NULL_PERMS, null_genes=NULL_GENES,
     log(f"pseudobulk paired t: {de.n_significant(pb):,} sig, {t_pb:.1f}s")
 
     # ---- arm 3: mixed model per gene -----------------------------------
+    # Fit on EXACTLY the rows the paired t uses. Before this restriction the
+    # mixed arm also absorbed single-condition profiles from donors that
+    # cannot be paired, so the two arms were not fitted on the same samples:
+    # max |mixed_log2fc - pseudobulk_log2fc| was ~1e-15 on the 8-donor types
+    # but 0.65 on CD8, 0.75 on FCGR3A+ and 0.45 on DC -- exactly the three
+    # types with fewer than 8 paired donors.
     t0 = time.time()
-    mx = mixed.mixed_de(logcpm, "donor", "condition", "stim", "ctrl")
+    paired_rows = [f"{d}||{c}" for d in units for c in ("stim", "ctrl")]
+    paired_rows = [r for r in paired_rows if r in logcpm.index]
+    mx_input = logcpm.loc[sorted(paired_rows,
+                                key=lambda r: (r.split("||")[0], r))]
+    mx = mixed.mixed_de(mx_input, "donor", "condition", "stim", "ctrl",
+                        donors=units)
     t_mx = time.time() - t0
     n_conv = int(mx["converged"].sum())
     log(f"mixedlm per gene: {de.n_significant(mx):,} sig, {t_mx:.1f}s, "

@@ -113,7 +113,7 @@ def _split_index(index, sample_key, condition_key):
 
 
 def mixed_de(logcpm, sample_key, condition_key, group_a, group_b,
-             method="powell", maxiter=1000):
+             method="powell", maxiter=1000, donors=None):
     """Fit `expression ~ condition + (1 | sample)` once per gene.
 
     logcpm: samples x genes, already normalised (log2 CPM from
@@ -121,13 +121,19 @@ def mixed_de(logcpm, sample_key, condition_key, group_a, group_b,
         counts, which is a different and worse model.
     sample_key: the donor. Use the 10x lane here and this becomes the
         per-cell test wearing a hat.
+    donors: optional whitelist of donors. Use this to fit the mixed model on
+        exactly the profiles a paired test uses: without it the model also
+        absorbs single-condition profiles from donors that cannot be paired,
+        which changes both the estimate and the size factors, and then the
+        two arms are no longer comparable.
 
     Returns one row per gene with the condition coefficient, its p-value,
     whether the fit converged, and the donor variance component.
     Non-converged fits get pval=NaN rather than a discarded number: dropping
     them silently would bias the result towards the easy genes.
     """
-    donors, conditions = _split_index(logcpm.index, sample_key, condition_key)
+    donor_labs, conditions = _split_index(logcpm.index, sample_key,
+                                          condition_key)
     is_a = conditions == group_a
     is_b = conditions == group_b
     if is_a.sum() < 2 or is_b.sum() < 2:
@@ -135,9 +141,11 @@ def mixed_de(logcpm, sample_key, condition_key, group_a, group_b,
             f"need >=2 samples per condition, got {is_a.sum()}/{is_b.sum()}")
 
     keep = is_a | is_b
+    if donors is not None:
+        keep &= np.isin(donor_labs, np.asarray(donors).astype(str))
     y_all = logcpm.to_numpy(dtype=float)[keep]
     cond = is_a[keep].astype(float)
-    donor = donors[keep]
+    donor = donor_labs[keep]
 
     # degrees of freedom: the number of DONORS contributing both conditions,
     # i.e. the number of pairs actually fitted. The fixed effect is estimated
