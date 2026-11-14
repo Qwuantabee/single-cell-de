@@ -821,6 +821,62 @@ def fig_megakaryocyte():
           "results/megakaryocyte_threshold_sweep.csv, results/megakaryocyte_summary.csv")
 
 
+def fig_nbglm_sim():
+    """Simulated: the NB GLM's power advantage is confined to small donor counts."""
+    s = _maybe("sim_nbglm_summary.csv", "scripts/nbglm_study.py")
+    raw = _maybe("sim_nbglm.csv", "scripts/nbglm_study.py")
+    if s is None or raw is None:
+        return
+    names = {"nb_glm": "NB GLM", "paired_t_logcpm": "paired t on log-CPM"}
+    cols = {"nb_glm": "C3", "paired_t_logcpm": "C0"}
+    donors = sorted(s["donors"].unique())
+    x = np.arange(len(donors))
+    reps = int(raw.groupby(["method", "donors"])["rep"].nunique().min())
+    n_tested = int(raw["n_tested"].iloc[0])
+    n_true = int((raw["tp"] + raw["fn"]).iloc[0])
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4))
+    for ax, col, ylabel in ((axes[0], "power", "power (share of changed genes found)"),
+                            (axes[1], "fdp", "observed false discovery proportion")):
+        for off, m in ((-0.06, "nb_glm"), (0.06, "paired_t_logcpm")):
+            g = s[s["method"] == m].set_index("donors").loc[donors]
+            # whiskers on power only: FDP is 0 whenever a replicate calls nothing,
+            # so its SD at 3 donors says nothing useful
+            ax.errorbar(x + off, g[f"{col}_mean"],
+                        yerr=g[f"{col}_sd"] if col == "power" else None, fmt="o-",
+                        color=cols[m], mec="black", mew=0.5, capsize=2, lw=1.2,
+                        elinewidth=0.8, label=names[m])
+        ax.set_xticks(x)
+        ax.set_xticklabels(donors)
+        ax.set_xlabel("donors (paired design)")
+        ax.set_ylabel(ylabel)
+    g6 = s[s["donors"] == 6].set_index("method")
+    for off, m in ((-0.06, "nb_glm"), (0.06, "paired_t_logcpm")):
+        axes[0].annotate(f"{g6.at[m, 'power_mean']:.0%}",
+                         (list(donors).index(6) + off, g6.at[m, "power_mean"]),
+                         textcoords="offset points",
+                         xytext=(-30 if m == "nb_glm" else 10, 4 if m == "nb_glm" else -4),
+                         fontsize=9, fontweight="bold")
+    axes[0].set_ylim(-0.05, 1.12)
+    axes[0].set_title(f"Simulated: at 6 donors the NB GLM finds {g6.at['nb_glm', 'power_mean']:.0%}\n"
+                      f"of changed genes, the paired t {g6.at['paired_t_logcpm', 'power_mean']:.0%}; "
+                      "equal from 12", fontsize=10)
+    axes[0].legend(frameon=False, fontsize=8, loc="lower right")
+    axes[1].axhline(0.05, ls="--", lw=1, color="grey", label="nominal 5%")
+    axes[1].set_ylim(-0.005, 0.14)
+    axes[1].set_title("At the same observed false discovery proportion\n"
+                      f"({g6.at['nb_glm', 'fdp_mean']:.3f} vs "
+                      f"{g6.at['paired_t_logcpm', 'fdp_mean']:.3f} at 6 donors)", fontsize=10)
+    axes[1].legend(frameon=False, fontsize=8, loc="upper right")
+    _save(fig, "nbglm_sim_power.png",
+          f"n = {reps} simulated replicates per method and donor count (mean; power "
+          f"whiskers +/-1 SD, FDP means only); {n_tested} genes, {n_true} truly changed at log2 effect 1.0, BH "
+          "alpha 0.05 (scripts/nbglm_study.py). SIMULATED: the generator draws negative-"
+          "binomial counts, the GLM's own model, and the dispersion-trend floor was "
+          "tuned on it, so this is the GLM's best case and not out-of-sample.\n"
+          "source: results/sim_nbglm_summary.csv, results/sim_nbglm.csv")
+
+
 def _panel_letter(ax, letter):
     ax.text(-0.02, 1.16, letter, transform=ax.transAxes, fontsize=12,
             fontweight="bold", va="bottom", ha="right")
@@ -980,6 +1036,7 @@ FIGURES = {
     "log2fc": fig_log2fc_agreement,
     "glance": fig_at_a_glance,
     "mega": fig_megakaryocyte,
+    "nbglm_sim": fig_nbglm_sim,
 }
 
 
