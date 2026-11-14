@@ -11,6 +11,7 @@ Run:
     python scripts/celltype_analysis.py
 """
 
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -31,7 +32,31 @@ MIN_CELLS = 25
 MIN_DONORS = 4
 
 
-def main():
+def skipped_detail(adata, skipped, group_a="stim", group_b="ctrl"):
+    """Print the per-donor counts behind every skipped cell type.
+
+    A skip is a claim about the data, so it has to be shown rather than
+    asserted: "1 donor meets the threshold" is only convincing next to the
+    counts that made it true, and it is the only way a reader can tell a
+    threshold problem from a data problem.
+    """
+    if not skipped:
+        return
+    obs = adata.obs
+    print("\n--- why each skipped type was skipped ---")
+    for ct, why in skipped.items():
+        sub = obs[obs["cell_type"].astype(str) == ct]
+        tab = pd.crosstab(sub["donor"], sub["condition"])
+        tab["total"] = tab.sum(axis=1)
+        tab = tab.sort_values("total", ascending=False)
+        n_loose = int(((tab[group_a] >= 1) & (tab[group_b] >= 1)).sum())
+        print(f"{ct}: {why}")
+        print(f"  {len(sub)} cells, {len(tab)} donors, "
+              f"{n_loose} donors with >=1 cell in both conditions")
+        print("  " + tab.to_string().replace("\n", "\n  "))
+
+
+def main(min_cells=MIN_CELLS, min_donors=MIN_DONORS):
     t0 = time.time()
     adata = data.load_kang()
     data.describe(adata)
@@ -64,7 +89,7 @@ def main():
 
     # ---- 2. pooled test, all cells of a donor together ------------------
     pooled = de.pseudobulk_de(adata, "condition", "donor", "stim", "ctrl",
-                              paired=True, min_cells=MIN_CELLS)
+                              paired=True, min_cells=min_cells)
     pooled_sig = set(pooled.index[pooled["qval"] < ALPHA])
     print(f"\npooled (all cells): {len(pooled_sig):,} of {len(pooled):,} "
           f"genes significant")
@@ -74,11 +99,14 @@ def main():
     # ---- 3. stratified test --------------------------------------------
     t1 = time.time()
     results, _, skipped = pseudobulk.pseudobulk_by_celltype(
-        adata, group_a="stim", group_b="ctrl", min_cells=MIN_CELLS,
-        min_donors=MIN_DONORS)
+        adata, group_a="stim", group_b="ctrl", min_cells=min_cells,
+        min_donors=min_donors)
     elapsed = time.time() - t1
-    print(f"\nstratified test on {results.index.get_level_values('cell_type').nunique()}"
+    print(f"\nstratified test (min_cells={min_cells}, "
+          f"min_donors={min_donors}) on "
+          f"{results.index.get_level_values('cell_type').nunique()}"
           f" cell types in {elapsed:.1f}s")
+    skipped_detail(adata, skipped)
     for ct, why in skipped.items():
         print(f"  skipped {ct}: {why}")
 
@@ -190,4 +218,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--min-cells", type=int, default=MIN_CELLS,
+                    help="cells required per donor per condition (default 25)")
+    ap.add_argument("--min-donors", type=int, default=MIN_DONORS,
+                    help="donors required per cell type (default 4)")
+    args = ap.parse_args()
+    main(min_cells=args.min_cells, min_donors=args.min_donors)

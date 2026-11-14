@@ -31,7 +31,9 @@ changed. Every significant call is a false positive by construction.
 | per-cell Wilcoxon | 364.7 (72.9%) |
 | pseudobulk, paired t-test | 0.0 (0.0%) |
 
-Correct FDR control would call about 25 or fewer.
+A calibrated test at FDR 5% would call about 25 of 500 false positives on
+average (5% × 500), so this is the expected rate under correct calibration,
+not a ceiling.
 
 ## 2. It is not buying power
 
@@ -219,9 +221,42 @@ different cell types have genuinely different responses.
 | B cells | 8 | 3,804 | 563 | 661 |
 | NK cells | 7 | 2,436 | 401 | 459 |
 | CD8 T cells | 5 | 2,081 | 88 | 187 |
+| Megakaryocytes | 1 | — | not testable | — |
 
-Megakaryocytes are dropped: only 1 donor has ≥25 cells in both conditions, and
-a "replicate" count of one is not a test.
+**All 8 cell types in the dataset are covered, 7 by an expression test and
+8 by the composition test.** Megakaryocytes get a composition result — they
+are the largest shift in the table above (−0.30 log₂, 1.51% → 1.22% of
+cells, paired t = −0.91, p = 0.39 on all 8 donors) — and they do *not* get an
+expression result. That exclusion is not a threshold that could be relaxed,
+and the earlier version of this README implied it was by quoting only the
+≥25-cell rule. `scripts/megakaryocyte_check.py` settles it with the counts:
+
+| donor | ctrl | stim | total |
+|---|---|---|---|
+| patient_1039 | 53 | 58 | 111 |
+| patient_1256 | 2 | 4 | 6 |
+| patient_1244 | 1 | 3 | 4 |
+| patient_1015 | 1 | 3 | 4 |
+| patient_1488 | 4 | 0 | 4 |
+| patient_101 | 1 | 0 | 1 |
+| patient_1016 | 1 | 0 | 1 |
+| patient_107 | 0 | 1 | 1 |
+
+132 cells across 8 donors, but `patient_1039` supplies **111 of them
+(84%)**. Sweeping the threshold: ≥25 cells → 1 donor; ≥10 → 1; ≥5 → 1; ≥3 →
+1; ≥2 → 2; ≥1 → 4. So no threshold above 2 recovers a paired design, and
+the loosest one that compares anything (≥1 cell per condition, 4 donors,
+125 cells) is still a comparison of one donor's megakaryocytes with 58-cell
+and 1-cell profiles treated as equally informative replicates.
+
+Run at that loosest threshold the test has almost nothing to work with: 85
+genes survive filtering, the median paired log₂ SD is 0.80, and the minimum
+detectable effect at 80% power is **1.67 log₂ (3.2×)** — nothing in the
+interferon programme is that large in this type, and 0 genes are called.
+That is a power statement, not a biological one: megakaryocytes may respond,
+this dataset cannot say. `results/megakaryocyte_summary.csv` carries the
+numbers, `results/megakaryocyte_threshold_sweep.csv` the full sweep, and
+`results/megakaryocyte_donor_counts.csv` the counts above.
 
 Pooled over all cells: **3,211** genes significant. Stratified: **3,512**
 distinct genes significant somewhere. But the overlap is far from complete —
@@ -232,9 +267,9 @@ one, it is a *different* answer, and the difference is entirely about which
 cells are being compared to which.
 
 The interferon programme survives the split intact — all 12 known ISGs are
-significant in all 7 cell types — but its *size* is cell-type specific:
-2,952 genes in CD14+ monocytes against 88 in CD8 T cells. A single pooled
-number (3,211) describes neither.
+significant in all 7 testable cell types — but its *size* is cell-type
+specific: 2,952 genes in CD14+ monocytes against 88 in CD8 T cells. A single
+pooled number (3,211) describes neither.
 
 ## 8. Mixed-effects models: the middle ground
 
@@ -262,21 +297,41 @@ Two honest problems, both measured:
 
 **The donor-swap null.** Permuting which of a donor's two aliquots is called
 "stim" makes the true answer "nothing" while leaving the donor structure
-intact (10 permutations, 500 genes each):
+intact — the permutation moves labels, never cells, and
+`tests/test_permutation.py` pins that property (`scripts/mixed_vs_others.py`
+also re-checks it on every permutation before using it, and records
+`permutation_preserved_donors` in the CSV). 10 permutations, 500 genes each:
 
 | method | false positives per 500 genes | FDP |
 |---|---|---|
-| pseudobulk | 0.2 | 0.000 |
+| pseudobulk | 0.2 | 0.0004 |
 | mixed | 8.7 | 0.017 |
 
-The mixed model is *not* calibrated as tightly here: 8.7 against a nominal
-allowance of up to 25, so it is conservative rather than broken, but it is
-~40× looser than the paired t-test. The reason is in the variance component:
-median donor variance 0.021, and 2,444 of 7,048 genes (35%) at or below 1e-6.
-With two samples per donor the random intercept is estimated from one pair,
-so it sits on the boundary and the standard error on the condition effect is
-then estimated from an almost-pooled model — more liberal than the exact
-paired t-test without being as liberal as per-cell.
+Read these against the right reference. Because all 500 genes are truly null,
+a *perfectly calibrated* test at FDR 5% would call **25 of 500** false
+positives on average — 5% × 500. That is the null expectation, not an
+allowance: it is what calibration means, so a method that returns fewer than
+25 is not "doing well", it is losing power.
+
+Against that reference, **pseudobulk at 0.2/500 is 125× below the 25 a
+calibrated test would produce.** It is drastically over-conservative, not
+well-calibrated. The mixed model at 8.7/500 is closer to 25 but still about
+three times below it — over-conservative too, just much less so. Neither
+method is liberal on this null: neither calls anything like the 365/500 the
+per-cell Wilcoxon calls in the simulation, and neither exceeds its nominal
+rate. The correct ranking is *pseudobulk is over-conservative, mixed is
+less over-conservative*, and on this evidence the gap between 0.2 and 8.7 is
+a difference in conservatism, not a difference in validity.
+
+That conservatism is the paired t-test being exact rather than
+approximate — with 8 pairs and a large effect there is little to gain — and
+it is the honest cost of a design with few donors. The mixed model is ~40×
+looser than the paired t-test on this null, and the reason is in the variance
+component: median donor variance 0.021, and 2,444 of 7,048 genes (35%) at or
+below 1e-6. With two samples per donor the random intercept is estimated from
+one pair, so it sits on the boundary and the standard error on the condition
+effect is then estimated from an almost-pooled model — less conservative than
+the exact paired t-test without ever becoming liberal.
 
 **The cost.** One model per gene is 176× the paired t-test (105.8 s vs 0.6 s
 for 7,048 genes; 15.0 ms/gene). Per-cell rather than per-profile fits are

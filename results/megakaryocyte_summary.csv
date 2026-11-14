@@ -1,0 +1,2 @@
+cell_type,n_cells,donors_with_any_cell,ctrl_cells,stim_cells,largest_donor,largest_donor_share,donors_at_loosest_threshold,expression_test_possible,donors_in_loosest_design,cells_per_profile_min,cells_per_profile_max,median_paired_sd_log2,mde_log2_at_80pct_power,mde_fold,genes_tested,genes_significant
+Megakaryocytes,132,8,63,69,patient_1039,0.8409090909090909,4,True,4,1,58,0.8037043314701873,1.672074157948924,3.186724186118356,85,0

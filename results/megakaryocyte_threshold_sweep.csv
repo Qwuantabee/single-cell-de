@@ -1,0 +1,8 @@
+min_cells_per_condition,donors_qualifying,donors,cells_retained,test_possible
+1,4,patient_1039;patient_1256;patient_1244;patient_1015,125,True
+2,2,patient_1039;patient_1256,117,True
+3,1,patient_1039,111,False
+5,1,patient_1039,111,False
+10,1,patient_1039,111,False
+15,1,patient_1039,111,False
+25,1,patient_1039,111,False

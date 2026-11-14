@@ -31,7 +31,7 @@ from scipy import stats
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from scpipe import data, de, mixed, pseudobulk  # noqa: E402
+from scpipe import data, de, mixed, permutation, pseudobulk  # noqa: E402
 
 RESULTS = ROOT / "results"
 RESULTS.mkdir(exist_ok=True)
@@ -162,12 +162,18 @@ def main():
     # That failure is measured by the simulated null in scripts/simulation_study.py.
     fps = {"pseudobulk": [], "mixed": []}
     t0 = time.time()
+    structure_ok = True
     for _ in range(NULL_PERMS):
-        swap = rng.random(len(set(donors))) < 0.5
-        swap_map = dict(zip(sorted(set(donors)), swap))
-        flipped = np.array([("ctrl" if c == "stim" else "stim") if
-                            swap_map[d] else c
-                            for d, c in zip(donors, cond)])
+        # The swap is applied per donor and checked before it is used: the
+        # property that makes this a valid null is that no profile changes
+        # donor and each donor still has one profile per condition.
+        flipped, _ = permutation.swap_samples(
+            donors, cond, np.random.default_rng(int(rng.integers(1 << 31))))
+        ok, problems = permutation.donor_structure_preserved(
+            donors, donors, cond, flipped)
+        if not ok:
+            structure_ok = False
+            print(f"  DONOR STRUCTURE BROKEN: {problems}")
         is_stim = flipped == "stim"
         A = logcpm.loc[is_stim, null_genes]
         B = logcpm.loc[~is_stim, null_genes]
@@ -198,8 +204,10 @@ def main():
         "perms": NULL_PERMS,
     })
     null_df["mean_fdp"] = null_df["mean_false_positives"] / NULL_GENES
+    null_df["permutation_preserved_donors"] = structure_ok
     print(f"\n--- donor-swap null ({NULL_PERMS} permutations, "
           f"{len(null_genes)} genes, {t_null:.1f}s) ---")
+    print(f"permutation preserves donor structure: {structure_ok}")
     print(null_df.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
     null_df.to_csv(RESULTS / "mixed_null_donor_swap.csv", index=False)
 
