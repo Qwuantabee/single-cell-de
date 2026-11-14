@@ -67,6 +67,34 @@ def test_no_effect_gives_no_calls():
     assert calls / total <= 0.05, f"{calls}/{total} false calls under null"
 
 
+def test_null_pvalues_are_calibrated_not_just_below_a_ceiling():
+    """The BH ceiling above can be passed by a badly broken estimator.
+
+    Under BH at q = 0.05 the expected number of calls on an all-null family
+    is about 0.05, so `calls / total <= 0.05` (a 5% ceiling on the *gene*
+    rate) tolerates thousands of times too many. Raw p-values are the
+    sensitive quantity: under an exact null a calibrated test puts 5% of
+    genes below 0.05. With four donors (three df) the normal reference that
+    statsmodels returns puts about 14% there, so this fails by a wide margin
+    on the bug fixed in 7f1e46d while a t(n_pairs-1) reference stays near 5%.
+    """
+    ps, calls = [], 0
+    for seed in range(5):
+        frame = _profiles(n_donors=4, n_genes=100, effect=0.0, donor_sd=0.3,
+                          noise=0.5, seed=100 + seed)
+        out = mixed.mixed_de(frame, "donor", "condition", "stim", "ctrl")
+        ps.append(out["pval"].dropna().to_numpy())
+        calls += int((out["qval"] < 0.05).sum())
+    p = np.concatenate(ps)
+    assert len(p) >= 450
+    frac = float(np.mean(p < 0.05))
+    # 500 genes: sd of the rate is about 0.01, so this is roughly +-3.5 sd
+    assert 0.02 < frac < 0.09, f"{frac:.3f} of null p-values below 0.05"
+    # and BH, which should call essentially nothing, calls at most one gene
+    # across the five families (expected 0.25)
+    assert calls <= 2, f"{calls} BH calls on 5 all-null families"
+
+
 def test_smaller_effect_is_smaller_coefficient():
     """Monotonic in the truth, so the number means something."""
     small = mixed.mixed_de(_profiles(effect=0.5, seed=1), "donor",

@@ -53,6 +53,10 @@ def test_null_gives_approximately_correct_fdr():
         total += len(r)
     fdr = called / total
     assert fdr < 0.05, f"null FDR {fdr:.3f} at 6 donors"
+    # The ceiling above allows 29 false positives over 600 genes. BH on an
+    # all-null family calls about 0.05 genes per family, so four families
+    # should give at most one call even with generous slack.
+    assert called <= 1, f"{called} BH calls on 4 all-null families"
 
 
 def test_pvalues_are_uniform_under_the_null():
@@ -66,6 +70,27 @@ def test_pvalues_are_uniform_under_the_null():
     p = np.concatenate(ps)
     frac = float(np.mean(p < 0.05))
     assert 0.01 < frac < 0.12, f"{frac:.3f} of null p-values below 0.05"
+
+
+def test_null_pvalues_are_calibrated_at_six_donors():
+    """A band that can fail. 1,200 null genes: the rate of p < 0.05 has an sd
+    of about 0.006 if calibrated, so 0.03 to 0.075 is wide. A normal-reference
+    Wald (the failure the t reference exists to prevent) puts about 10% below
+    0.05 at six donors and 12 samples, which this rejects; the 0.01-0.12 band
+    above does not.
+    """
+    ps = []
+    for seed in range(8):
+        adata, _ = simulate.simulate(n_genes=150, n_donors=6, n_de=0,
+                                     seed=seed)
+        r = nbglm.nbglm_de(adata, "condition", "donor", "stim", "ctrl")
+        ps.append(r["pval"].to_numpy())
+    p = np.concatenate(ps)
+    assert len(p) >= 1100
+    frac = float(np.mean(p < 0.05))
+    assert 0.03 < frac < 0.075, f"{frac:.3f} of null p-values below 0.05"
+    # uniform p-values have mean 0.5 (sd 0.008 over 1,200 genes)
+    assert 0.44 < float(np.mean(p)) < 0.56, f"mean null p {np.mean(p):.3f}"
 
 
 def test_size_factors_absorb_library_depth():
