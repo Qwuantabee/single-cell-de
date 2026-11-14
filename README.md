@@ -174,6 +174,60 @@ So: use the p-value as a filter, and the effect size as the ranking. Sorting
 a results table by p-value is close to universal and, at these replicate
 counts, close to arbitrary.
 
+## 7. Cell type first, or the composition shift is the result
+
+Everything above aggregates a donor's cells and compares conditions. That is
+correct for the donor structure and still wrong for one specific reason: if
+the *mix* of cell types differs between conditions, the comparison is
+between two different cell mixtures, not between two expression states. Every
+marker of whichever type became more common comes out "up", with valid
+p-values, for a question nobody asked.
+
+On Kang the composition does move, but only slightly:
+
+| cell type | mean proportion ctrl | stim | log₂ ratio |
+|---|---|---|---|
+| CD14+ Monocytes | 0.238 | 0.254 | +0.10 |
+| Megakaryocytes | 0.012 | 0.015 | +0.30 |
+| CD4 T cells | 0.448 | 0.440 | −0.03 |
+| NK cells | 0.068 | 0.067 | −0.01 |
+| B cells | 0.102 | 0.097 | −0.07 |
+
+Largest shift 0.30 log₂ (1.2×). Interferon-β does not, here, rearrange the
+PBMC composition much — which is worth stating plainly, because it means this
+dataset is *not* the case where pooling fails for that reason, and a
+different dataset (or a disease contrast, which is where composition effects
+usually bite) would be.
+
+Stratifying by cell type changes the answer anyway, and for a second reason:
+different cell types have genuinely different responses.
+
+| cell type | donors | genes tested | significant (BH within type) | (BH global) |
+|---|---|---|---|---|
+| CD14+ Monocytes | 8 | 5,364 | 2,952 | 2,578 |
+| CD4 T cells | 8 | 7,048 | 986 | 1,191 |
+| FCGR3A+ Monocytes | 5 | 2,673 | 746 | 717 |
+| Dendritic cells | 5 | 2,078 | 565 | 551 |
+| B cells | 8 | 3,804 | 563 | 661 |
+| NK cells | 7 | 2,436 | 401 | 459 |
+| CD8 T cells | 5 | 2,081 | 88 | 187 |
+
+Megakaryocytes are dropped: only 1 donor has ≥25 cells in both conditions, and
+a "replicate" count of one is not a test.
+
+Pooled over all cells: **3,211** genes significant. Stratified: **3,512**
+distinct genes significant somewhere. But the overlap is far from complete —
+**763** genes are significant pooled and in no cell type, and **1,064** are
+significant in at least one cell type and not pooled. Those two numbers are
+the point: the pooled answer is not a superset or a subset of the stratified
+one, it is a *different* answer, and the difference is entirely about which
+cells are being compared to which.
+
+The interferon programme survives the split intact — all 12 known ISGs are
+significant in all 7 cell types — but its *size* is cell-type specific:
+2,952 genes in CD14+ monocytes against 88 in CD8 T cells. A single pooled
+number (3,211) describes neither.
+
 ## How the simulation got fixed
 
 The first version of this study produced the opposite of the published
@@ -254,9 +308,6 @@ Python 3.14 has no anndata or h5py wheels yet; use 3.12 or 3.13.
   noting that this simulator generates negative-binomial data, which is the
   GLM's own model, so this is its best case; on real data the gap is unlikely
   to be larger than this and could be smaller.
-- Per-cell-type analysis: aggregate within cell type, since a composition
-  shift between conditions can masquerade as expression change.
-- Mixed-effects models as a middle ground between per-cell and pseudobulk.
 
 ## Note on how this was built
 
