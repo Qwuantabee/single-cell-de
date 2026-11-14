@@ -750,6 +750,75 @@ def fig_log2fc_agreement():
           "file at commit 1c0c940), results/nbglm_real_isg.csv")
 
 
+def fig_megakaryocyte():
+    """Megakaryocytes have no usable expression design: one donor supplies 84%."""
+    counts = _maybe("megakaryocyte_donor_counts.csv", "scripts/megakaryocyte_check.py")
+    sweep = _maybe("megakaryocyte_threshold_sweep.csv", "scripts/megakaryocyte_check.py")
+    summ = _maybe("megakaryocyte_summary.csv", "scripts/megakaryocyte_check.py")
+    if counts is None or sweep is None or summ is None:
+        return
+    s = summ.iloc[0]
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2),
+                             gridspec_kw={"width_ratios": [1.1, 1]})
+    ax = axes[0]
+    d = counts.sort_values("total").reset_index(drop=True)
+    y = np.arange(len(d))
+    ax.barh(y, d["ctrl"], color="0.65", edgecolor="black", linewidth=0.5,
+            label="control cells")
+    ax.barh(y, d["stim"], left=d["ctrl"], color="C2", edgecolor="black",
+            linewidth=0.5, label="stimulated cells")
+    for yi, tot, share in zip(y, d["total"], d["share_of_type"]):
+        ax.text(tot + 1.5, yi, f"{tot}" + (f" ({share:.0%})" if share > 0.5 else ""),
+                va="center", fontsize=8)
+    ax.set_yticks(y)
+    ax.set_yticklabels(d["donor"].str.replace("_", " "), fontsize=8)
+    ax.set_xlim(0, d["total"].max() * 1.25)
+    ax.set(xlabel="megakaryocytes (cells)",
+           title=f"One donor supplies {s['largest_donor_share']:.0%} of megakaryocytes\n"
+                 f"({int(d['total'].max())} of {int(s['n_cells'])} cells, "
+                 f"{len(d)} donors)")
+    ax.title.set_fontsize(10)
+    ax.legend(frameon=False, fontsize=8, loc="lower right")
+
+    ax = axes[1]
+    xs = np.arange(len(sweep))
+    ok = sweep["test_possible"].to_numpy()
+    n_don = sweep["donors_qualifying"].to_numpy()
+    ax.plot(xs, n_don, "-", color="grey", lw=1, zorder=1)
+    ax.scatter(xs[ok], n_don[ok], s=55, color="C0", edgecolor="black",
+               linewidth=0.5, zorder=3, label="2 or more donors (test can run)")
+    ax.scatter(xs[~ok], n_don[~ok], s=55, color="C3", edgecolor="black",
+               linewidth=0.5, zorder=3, label="1 donor (no paired test)")
+    ax.set_xticks(xs)
+    ax.set_xticklabels(sweep["min_cells_per_condition"])
+    ax.set_yticks(range(0, int(n_don.max()) + 1))
+    ax.set_ylim(0, n_don.max() + 1.6)
+    first_single = int(sweep.loc[~sweep["test_possible"], "min_cells_per_condition"].iloc[0])
+    ax.set(xlabel="minimum cells per donor and condition",
+           ylabel="donors that qualify",
+           title=f"No threshold gives a usable design: {n_don[0]} donors at "
+                 f">= {sweep['min_cells_per_condition'].iloc[0]} cell,\n"
+                 f"{n_don[1]} at >= {sweep['min_cells_per_condition'].iloc[1]}, "
+                 f"one donor from >= {first_single} cells up")
+    ax.title.set_fontsize(10)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    ax.text(0.98, 0.5,
+            f"loosest design: {int(s['donors_in_loosest_design'])} donors, profiles of "
+            f"{int(s['cells_per_profile_min'])}-{int(s['cells_per_profile_max'])} cells\n"
+            f"{int(s['genes_tested'])} genes tested, {int(s['genes_significant'])} called\n"
+            f"minimum detectable effect (80% power): {s['mde_log2_exact_noncentral_t']:.2f} "
+            f"log2,\n{s['mde_log2_exact_bonferroni']:.2f} log2 with Bonferroni; largest "
+            f"observed |log2FC| {s['largest_observed_abs_log2fc']:.2f}",
+            transform=ax.transAxes, ha="right", va="top", fontsize=7.5)
+    _save(fig, "megakaryocyte_donors.png",
+          f"n = {int(s['n_cells'])} megakaryocytes ({int(s['ctrl_cells'])} control, "
+          f"{int(s['stim_cells'])} stimulated) across {len(d)} donors; the composition "
+          "test (all 8 donors) is unaffected. The sweep counts donors with at least "
+          "the given number of cells in both conditions.\n"
+          "source: results/megakaryocyte_donor_counts.csv, "
+          "results/megakaryocyte_threshold_sweep.csv, results/megakaryocyte_summary.csv")
+
+
 def _panel_letter(ax, letter):
     ax.text(-0.02, 1.16, letter, transform=ax.transAxes, fontsize=12,
             fontweight="bold", va="bottom", ha="right")
@@ -908,6 +977,7 @@ FIGURES = {
     "plan_space": fig_plan_space,
     "log2fc": fig_log2fc_agreement,
     "glance": fig_at_a_glance,
+    "mega": fig_megakaryocyte,
 }
 
 
