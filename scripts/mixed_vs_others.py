@@ -73,9 +73,13 @@ ALL_TYPES = [
 
 # expected false positives per gene set at BH q=0.05 on all-null data.
 # NOT alpha * m (that is the uncorrected expectation). BH bounds the
-# false-discovery proportion among rejections, so on all-null data a
-# calibrated procedure rejects a mean of about q * 1 / (1 + ...) ~ 0.05.
-# Measured by simulation in scripts/false_positive_test.py: 0.055.
+# false-discovery proportion among rejections, so on a family of independent
+# exact nulls P(any rejection) = q = 0.05 and the mean count is slightly
+# above that. Simulated by scripts/bh_null_expectation.py (5,000 draws,
+# m = 500: results/bh_null_expectation.csv); 0.05 is used as the round
+# reference and tests/test_bh_null_expectation.py pins it to that simulation.
+# It is the reference for independent exact nulls, not a derived bound for the
+# swap null below (fixed gene set, correlated genes).
 BH_EXPECTED_FP = 0.05
 
 # per-cell fits are the expensive arm: cap them deliberately
