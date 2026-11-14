@@ -61,8 +61,20 @@ def test_composition_reports_the_imbalance():
     # the two types move in opposite directions
     assert (shift.loc["type_x", "log2_ratio"]
             * shift.loc["type_y", "log2_ratio"]) < 0
-    assert shift.loc["type_x", "n_a"] > shift.loc["type_x", "n_b"] or \
-        shift.loc["type_x", "n_a"] < shift.loc["type_x", "n_b"]
+    # Direction convention, pinned because it is easy to flip: conditions are
+    # taken in sorted order, so "a" is ctrl and "b" is stim, and log2_ratio
+    # is ctrl / stim (NOT stim / ctrl). In the fixture ctrl is 15% type_x and
+    # stim is 85% type_x, so type_x is LESS common in "a".
+    assert shift.loc["type_x", "log2_ratio"] < 0
+    assert shift.loc["type_y", "log2_ratio"] > 0
+    assert shift.loc["type_x", "mean_prop_a"] == pytest.approx(0.15, abs=0.01)
+    assert shift.loc["type_x", "mean_prop_b"] == pytest.approx(0.85, abs=0.01)
+    # exact cell counts: 6 donors x int(120 * 0.15) = 108 ctrl, 612 stim
+    assert shift.loc["type_x", "n_a"] == 6 * int(120 * 0.15)
+    assert shift.loc["type_x", "n_b"] == 6 * int(120 * 0.85)
+    assert shift.loc["type_x", "n_a"] < shift.loc["type_x", "n_b"]
+    assert shift.loc["type_x", "log2_ratio"] == pytest.approx(
+        np.log2(0.15 / 0.85), abs=0.02)
 
 
 def test_composition_rejects_single_condition():
