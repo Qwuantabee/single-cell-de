@@ -38,12 +38,25 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from .de import _bh
 
+# a variance component below this is a boundary fit, not an estimate
+BOUNDARY_VAR = 1e-6
 
-def _fit(y, cond, donor, method="powell", maxiter=1000):
-    """One gene. Returns (coef, pvalue, converged, donor_variance)."""
+
+def _fit(y, cond, donor, method="powell", maxiter=1000, df=np.inf):
+    """One gene. Returns (coef, pvalue, converged, donor_variance, boundary).
+
+    df is the reference degrees of freedom for the fixed-effect test. The
+    Wald p-value statsmodels returns uses a NORMAL reference (df=inf). On this
+    design the coefficient IS the paired mean difference, so the right
+    reference is Student t on n_pairs-1: re-referencing the same CD4 estimates
+    from normal to t(7) cut BH-significant calls from 1872 to 1033 (paired t
+    gives 986). The "anti-conservative inflation" was a distributional
+    default, not a property of mixed models.
+    """
     import statsmodels.formula.api as smf
 
     frame = pd.DataFrame({"y": y, "cond": cond, "donor": donor})
@@ -54,16 +67,36 @@ def _fit(y, cond, donor, method="powell", maxiter=1000):
             fit = smf.mixedlm("y ~ cond", frame, groups=frame["donor"]).fit(
                 method=method, maxiter=maxiter)
         except (np.linalg.LinAlgError, ValueError, np.linalg.Error):
-            return np.nan, np.nan, False, np.nan
+            return np.nan, np.nan, False, np.nan, False
 
     coef = fit.params.get("cond", np.nan)
-    pval = fit.pvalues.get("cond", np.nan)
     try:
         donor_var = float(fit.cov_re.iloc[0, 0])
     except (AttributeError, IndexError):
         donor_var = np.nan
-    ok = bool(fit.converged) and np.isfinite(coef) and np.isfinite(pval)
-    return float(coef), float(pval), ok, donor_var
+
+    # the standard error from the reported Wald bse, then re-reference on t
+    try:
+        se = float(fit.bse.get("cond", np.nan))
+    except (AttributeError, TypeError):
+        se = np.nan
+    ok = (bool(fit.converged) and np.isfinite(coef) and np.isfinite(se)
+          and se > 0)
+    if not ok:
+        # a p-value from a fit that did not converge is not a p-value
+        coef_out = float(coef) if np.isfinite(coef) else np.nan
+        return coef_out, np.nan, False, donor_var, False
+
+    t_stat = coef / se
+    if np.isfinite(df):
+        pval = float(2 * stats.t.sf(abs(t_stat), df))
+    else:
+        pval = float(2 * stats.norm.sf(abs(t_stat)))
+
+    # boundary fit: the random intercept collapsed, so the model is really
+    # pooled. Reported separately from convergence, not folded into it.
+    boundary = bool(not np.isfinite(donor_var) or donor_var < BOUNDARY_VAR)
+    return float(coef), pval, True, donor_var, boundary
 
 
 def _split_index(index, sample_key, condition_key):
@@ -106,17 +139,32 @@ def mixed_de(logcpm, sample_key, condition_key, group_a, group_b,
     cond = is_a[keep].astype(float)
     donor = donors[keep]
 
+    # degrees of freedom: the number of DONORS contributing both conditions,
+    # i.e. the number of pairs actually fitted. The fixed effect is estimated
+    # from the within-donor contrast, so that count -- not the row count -- is
+    # the replication, and the reference distribution has to be t on it.
+    n_pairs = 0
+    for d in np.unique(donor):
+        own = cond[donor == d]
+        if (own == 1.0).any() and (own == 0.0).any():
+            n_pairs += 1
+    df = n_pairs - 1 if n_pairs >= 2 else np.inf
+
     rows = []
     for j, gene in enumerate(logcpm.columns):
-        coef, pval, ok, dvar = _fit(y_all[:, j], cond, donor, method, maxiter)
-        rows.append((gene, coef, pval, ok, dvar))
+        coef, pval, ok, dvar, boundary = _fit(
+            y_all[:, j], cond, donor, method, maxiter, df=df)
+        rows.append((gene, coef, pval, ok, dvar, boundary))
 
     out = pd.DataFrame(rows, columns=[
-        "gene", "coef", "pval", "converged", "donor_var"]).set_index("gene")
+        "gene", "coef", "pval", "converged", "donor_var", "boundary"]
+    ).set_index("gene")
     out["qval"] = _bh(out["pval"].to_numpy())
     out["log2fc"] = out["coef"]
     out["n_a"] = int(is_a.sum())
     out["n_b"] = int(is_b.sum())
+    out["df"] = df
+    out["n_pairs"] = n_pairs
     return out
 
 
@@ -141,8 +189,13 @@ def mixed_de_percell(values, genes, donor, condition, group_a, group_b,
     values, donor, cond = values[keep], donor[keep], is_a[keep].astype(float)
 
     rows = []
+    pairs = [d for d in np.unique(donor)
+             if ((cond == 1.0) & (donor == d)).any()
+             and ((cond == 0.0) & (donor == d)).any()]
+    df = len(pairs) - 1 if len(pairs) >= 2 else np.inf
     for j, gene in enumerate(genes):
-        coef, pval, ok, _ = _fit(values[:, j], cond, donor, method, maxiter)
+        coef, pval, ok, _dvar, _bd = _fit(values[:, j], cond, donor, method,
+                                          maxiter, df=df)
         rows.append((gene, coef, pval, ok))
 
     out = pd.DataFrame(rows, columns=["gene", "log2fc", "pval", "converged"]

@@ -10,6 +10,7 @@ wrong answer, not an exception.
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import stats
 
 from scpipe import mixed
 
@@ -122,6 +123,36 @@ def test_rejects_single_sample_per_condition():
     frame = _profiles(n_donors=1, n_genes=4)
     with pytest.raises(ValueError, match="need >=2 samples per condition"):
         mixed.mixed_de(frame, "donor", "condition", "stim", "ctrl")
+
+
+def test_mixed_pvalue_equals_paired_t_on_balanced_fixture():
+    """The mixed p-value must be the PAIRED t p-value, not a normal one.
+
+    On a balanced two-sample-per-donor design the fitted condition
+    coefficient IS the paired mean difference, so the only defensible
+    reference distribution is Student t on n_pairs-1. statsmodels returns a
+    Wald p on a NORMAL reference, which is the bug this test pins: with 8
+    donors, normal vs t(7) is the difference between 1872 and 1033 CD4 calls.
+
+    donor_sd is positive so the random effect is genuinely estimated and the
+    equality is not a degenerate boundary case.
+    """
+    frame = _profiles(n_donors=8, n_genes=15, effect=1.2, donor_sd=1.0,
+                      noise=0.4, seed=3)
+    out = mixed.mixed_de(frame, "donor", "condition", "stim", "ctrl")
+    assert out["df"].iloc[0] == 7
+    assert (out["donor_var"].dropna() > 0).mean() > 0.5
+
+    donors = [f"d{i}" for i in range(8)]
+    stim = frame.loc[[f"{d}||stim" for d in donors]].to_numpy(dtype=float)
+    ctrl = frame.loc[[f"{d}||ctrl" for d in donors]].to_numpy(dtype=float)
+    _, p_paired = stats.ttest_rel(stim, ctrl, axis=0)
+
+    assert out["pval"].to_numpy() == pytest.approx(p_paired, rel=1e-6,
+                                                   abs=1e-9)
+    # and the coefficient is the mean difference, which is why it holds
+    assert out["coef"].to_numpy() == pytest.approx(
+        (stim - ctrl).mean(axis=0), abs=1e-9)
 
 
 def test_percell_agrees_with_profiles_when_cells_are_identical():
