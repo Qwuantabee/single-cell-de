@@ -291,3 +291,93 @@ def test_null_summary_marks_no_balanced_draws():
     tab = nr.null_summary(recs).set_index("method")
     assert np.isnan(tab.loc["nb_glm", "mean_fp_balanced"])
     assert tab.loc["nb_glm", "n_balanced"] == 0
+
+
+# ----------------------------------------- C11 / C13 / C14 additions
+
+
+def test_log2fc_agreement_reports_offset_and_max_difference():
+    pb = _frame({"a": (1.0, 0.1), "b": (2.0, 0.1), "c": (3.0, 0.1)})
+    shifted = _frame({"a": (1.5, 0.1), "b": (2.5, 0.1), "c": (3.5, 0.1)})
+    agr = nr.log2fc_agreement(pb, shifted)
+    # a constant offset leaves Pearson at 1 and is invisible to it, which is
+    # exactly how total-count vs median-ratio CPM hid a +0.45 mean offset
+    assert agr["pearson"] == pytest.approx(1.0)
+    assert agr["mean_diff"] == pytest.approx(0.5)
+    assert agr["max_abs_diff"] == pytest.approx(0.5)
+
+
+def test_fit_status_counts_separate_failed_and_separated_calls():
+    nb = pd.DataFrame({
+        "qval": [0.001, 0.2, 0.001, 1.0, np.nan],
+        "fit_status": ["ok", "ok", "separated", "failed", "no_counts"],
+        "log2fc_glm": [1.0, 0.1, 150.0, np.nan, np.nan],
+    }, index=list("abcde"))
+    c = nr.fit_status_counts(nb)
+    assert (c["glm_ok"], c["glm_separated"], c["glm_failed"],
+            c["glm_no_counts"]) == (2, 1, 1, 1)
+    assert c["glm_called_ok"] == 1 and c["glm_called_separated"] == 1
+    assert c["glm_called_failed"] == 0
+
+
+def test_coef_agreement_excludes_separated_fits():
+    pb = _frame({"a": (1.0, 0.1), "b": (2.0, 0.1), "c": (3.0, 0.1),
+                 "d": (4.0, 0.1)})
+    nb = pd.DataFrame({
+        "log2fc_glm": [1.0, 2.0, 3.0, -150.0],
+        "fit_status": ["ok", "ok", "ok", "separated"],
+    }, index=list("abcd"))
+    agr = nr.coef_agreement(pb, nb)
+    assert agr["n_genes"] == 3
+    assert agr["pearson"] == pytest.approx(1.0)
+
+
+def test_draw_balanced_plan_refuses_an_odd_donor_count():
+    """n // 2 on seven donors flips three, leaving four carrying their real
+    effect on every draw; it must not be reported as balanced."""
+    labels = []
+    for d in [f"d{i}" for i in range(7)]:
+        labels += [(d, "ctrl")] * 3 + [(d, "stim")] * 3
+    ad = _adata(labels)
+    with pytest.raises(ValueError, match="cannot be balanced"):
+        nr.draw_balanced_plan(ad.obs, np.random.default_rng(0), 7)
+
+
+def test_permute_with_plan_holds_out_a_donor_and_flips_the_plan():
+    labels = []
+    for d in [f"d{i}" for i in range(5)]:
+        labels += [(d, "ctrl")] * 3 + [(d, "stim")] * 2
+    ad = _adata(labels)
+    units = sorted(ad.obs["donor"].unique())
+    (held, used, plan), *_ = nr.permutation.balanced_plan_specs(
+        units, np.random.default_rng(0), max_draws=15)
+    perm, base = nr.permute_with_plan(ad, plan, used)
+    assert held is not None and held not in set(perm.obs["donor"])
+    assert set(perm.obs["donor"]) == set(used)
+    assert nr._n_donors_flipped(base, perm) == len(used) // 2
+    ok, problems = nr.check_cell_swap(
+        base.obs["donor"], perm.obs["donor"], base.obs["condition"],
+        perm.obs["condition"])
+    assert ok, problems
+
+
+def test_balanced_table_counts_distinct_draws_and_gives_cis():
+    recs = []
+    for i, fp in enumerate((0, 0, 2, 0)):
+        recs.append({
+            "cell_type": "X", "family": "balanced", "perm": i,
+            "n_donors_used": 4, "held_out": None,
+            "donors_flipped": ("a|b" if i % 2 else "a|c"),
+            "donors_used": "a|b|c|d", "n_plans_available": 3,
+            "n_small_set": 100,
+            "fp_pseudobulk_null": 0, "fp_nb_glm_null": fp,
+            "raw_p05_pb_small": 0.02, "raw_p05_nb_small": 0.04,
+            "fp_pseudobulk": 0, "fp_nb_glm": fp,
+        })
+    tab = nr.balanced_table(recs, np.random.default_rng(0)).set_index("method")
+    g = tab.loc["nb_glm"]
+    assert g["draws"] == 4 and g["n_distinct_draws"] == 2
+    assert g["n_draws_with_any_fp"] == 1 and g["p_any"] == pytest.approx(0.25)
+    assert g["p_any_lo"] < 0.25 < g["p_any_hi"]
+    assert g["fp_ci_lo"] <= g["mean_fp_small_effect"] <= g["fp_ci_hi"]
+    assert tab.loc["pseudobulk", "p_any_hi"] > 0.3     # 0/4 shows nothing

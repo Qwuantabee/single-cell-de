@@ -38,9 +38,18 @@ they mean different things:
                  two unflipped donors still carry the genuine interferon
                  response, so a rejection there may be sensitivity rather than
                  miscalibration.
-  balanced    -- rejection-sampled seeds until exactly n/2 donors are flipped.
-                 Still `swap_cells` doing the swapping; only the seed is
-                 redrawn. This is the strictly-null family.
+  balanced    -- every DISTINCT plan that flips exactly n/2 donors (one per
+                 complement pair; sampled without replacement when there are
+                 more than --n-balanced), run on EVERY cell type with enough
+                 donors, not just CD4. With an odd donor count one donor is
+                 held out per draw and the draws are (held-out, plan) pairs;
+                 the donors used are recorded. The plan space is small (8
+                 donors: 35 plans, 7: 70, 5: 15), so "200 draws" do not exist
+                 for these panels and the table says how many do. This is the
+                 strictly-null family for a CONSTANT effect only: genes whose
+                 effect differs between donors keep that spread after the
+                 swap (see `scpipe.permutation`), so the null is conservative,
+                 not exact, and is restricted to a small-effect gene set.
 
 A calibrated procedure returns a mean of about 0.05 rejections per family on
 all-null data: BH bounds the false-discovery *proportion*, so with no true
@@ -133,7 +142,41 @@ def log2fc_agreement(pb, nb):
     pr = float("nan") if flat else float(st.pearsonr(x, y)[0])
     sp = float("nan") if flat else float(st.spearmanr(x, y)[0])
     return {"n_genes": int(len(m)), "pearson": pr, "spearman": sp,
-            "mean_abs_diff": float(np.mean(np.abs(x - y)))}
+            "mean_abs_diff": float(np.mean(np.abs(x - y))),
+            "mean_diff": float(np.mean(y - x)),
+            "max_abs_diff": float(np.max(np.abs(x - y)))}
+
+
+def coef_agreement(pb, nb):
+    """pseudobulk log2fc against the GLM coefficient, ok fits only.
+
+    The coefficient is a different estimator (a log-link NB fit, not a
+    difference of log means), so agreement is not expected to be perfect, and
+    for separated or failed fits it is not an estimate at all. Those are
+    excluded here and counted elsewhere.
+    """
+    if "fit_status" not in nb.columns:
+        return {"n_genes": 0, "pearson": float("nan")}
+    ok = nb[nb["fit_status"] == "ok"]
+    m = pb[["log2fc"]].join(ok[["log2fc_glm"]], how="inner").dropna()
+    if len(m) < 3 or m["log2fc"].std() == 0 or m["log2fc_glm"].std() == 0:
+        return {"n_genes": int(len(m)), "pearson": float("nan")}
+    from scipy import stats as st
+    return {"n_genes": int(len(m)),
+            "pearson": float(st.pearsonr(m["log2fc"], m["log2fc_glm"])[0])}
+
+
+def fit_status_counts(nb, alpha=ALPHA):
+    """Separated and failed fits as their own category, with their calls."""
+    if "fit_status" not in nb.columns:
+        return {}
+    out = {}
+    for status in ("ok", "separated", "failed", "no_counts"):
+        sel = nb["fit_status"] == status
+        out[f"glm_{status}"] = int(sel.sum())
+        out[f"glm_called_{status}"] = int(
+            (sel & nb["qval"].notna() & (nb["qval"] < alpha)).sum())
+    return out
 
 
 def rank_by_q(result, column="qval"):
@@ -264,6 +307,11 @@ def draw_balanced_plan(obs, rng, n_donors, group_a="stim", group_b="ctrl",
     `scpipe.permutation.swap_cells` -- no new shuffler -- and the seed is
     redrawn until that module's own plan has the right k.
     """
+    if n_donors % 2:
+        raise ValueError(
+            f"{n_donors} donors cannot be balanced (k = n/2 is not an "
+            "integer, so one donor would keep its real effect on every "
+            "draw); hold one donor out with permutation.balanced_plan_specs")
     for _ in range(max_draws):
         labels, plan = permutation.swap_cells(
             obs["donor"].to_numpy(), obs["condition"].to_numpy(), rng,
@@ -329,6 +377,94 @@ def null_summary(records):
     return pd.DataFrame(rows)
 
 
+def permute_with_plan(sub, plan, used):
+    """Restrict to the donors a draw uses, then apply an explicit swap plan.
+
+    Cells never change donor; only condition labels of flipped donors are
+    exchanged (permutation.swap_cells). Returns (permuted, restricted) where
+    `restricted` is the same cells with their true labels, for the invariant
+    checks.
+    """
+    import anndata as ad
+
+    used = [str(u) for u in used]
+    keep = sub.obs["donor"].astype(str).isin(used).to_numpy()
+    base = sub[keep].copy()
+    labels, _ = permutation.swap_cells(
+        base.obs["donor"].to_numpy(), base.obs["condition"].to_numpy(),
+        np.random.default_rng(0), plan=plan)
+    new = ad.AnnData(X=base.X, obs=base.obs.copy(), var=base.var.copy())
+    new.obs["condition"] = labels
+    return new, base
+
+
+def evaluate_draw(perm, small_set):
+    """Both methods on one permuted object: BH calls and raw small-set rate."""
+    p_pb = de.pseudobulk_de(perm, "condition", "donor", "stim", "ctrl",
+                            paired=True, min_cells=MIN_CELLS)
+    p_nb = nbglm.nbglm_de(perm, "condition", "donor", "stim", "ctrl",
+                          paired=True, min_cells=MIN_CELLS)
+    c_pb = called_genes(p_pb)
+    c_nb = called_genes(p_nb)
+    small = sorted(small_set)
+    sp = p_pb.reindex(small)["pval"]
+    sn = p_nb.reindex(small)["pval"]
+    return {
+        "fp_pseudobulk": len(c_pb), "fp_nb_glm": len(c_nb),
+        "fp_pseudobulk_null": len(c_pb & small_set),
+        "fp_nb_glm_null": len(c_nb & small_set),
+        "raw_p05_pb_small": float(np.nanmean(sp < ALPHA)) if len(small) else
+        float("nan"),
+        "raw_p05_nb_small": float(np.nanmean(sn < ALPHA)) if len(small) else
+        float("nan"),
+        "n_pseudobulk": int(len(p_pb)), "n_nb_glm": int(len(p_nb)),
+        "n_small_set": len(small_set),
+    }
+
+
+def balanced_table(records, rng=None):
+    """Per cell type and method: balanced-family FP with CIs.
+
+    Mean BH calls on the small-effect set (bootstrap CI over draws), the
+    fraction of draws with any call (Wilson CI), the raw p < alpha rate on the
+    small-effect set, and how many distinct plans exist for the panel.
+    """
+    rows = []
+    for ct in dict.fromkeys(r["cell_type"] for r in records):
+        recs = [r for r in records
+                if r["cell_type"] == ct and r.get("family") == "balanced"]
+        if not recs:
+            continue
+        for method, key, raw in (("pseudobulk", "fp_pseudobulk_null",
+                                  "raw_p05_pb_small"),
+                                 ("nb_glm", "fp_nb_glm_null",
+                                  "raw_p05_nb_small")):
+            fp = np.array([r[key] for r in recs], dtype=float)
+            n_any = int((fp > 0).sum())
+            lo, hi = permutation.bootstrap_ci(fp, rng)
+            alo, ahi = permutation.wilson_interval(n_any, len(fp))
+            rows.append({
+                "cell_type": ct, "method": method,
+                "n_donors_used": recs[0]["n_donors_used"],
+                "draws": len(fp),
+                "n_distinct_draws": len({(r["held_out"], r["donors_flipped"],
+                                          r["donors_used"]) for r in recs}),
+                "n_plans_available": recs[0]["n_plans_available"],
+                "n_small_set": recs[0]["n_small_set"],
+                "mean_fp_small_effect": float(fp.mean()),
+                "fp_ci_lo": lo, "fp_ci_hi": hi,
+                "n_draws_with_any_fp": n_any,
+                "p_any": n_any / len(fp), "p_any_lo": alo, "p_any_hi": ahi,
+                "max_fp_small_effect": int(fp.max()),
+                "raw_p05_small_set": float(np.nanmean(
+                    [r[raw] for r in recs])),
+                "mean_fp_all_genes": float(np.mean(
+                    [r["fp_pseudobulk" if method == "pseudobulk"
+                       else "fp_nb_glm"] for r in recs])),
+            })
+    return pd.DataFrame(rows)
+
+
 # ---------------------------------------------------------------- drivers
 
 
@@ -344,15 +480,16 @@ def run_one(sub, label):
                         paired=True, min_cells=MIN_CELLS)
     t_nb = time.perf_counter() - t0
 
-    # A gene that carries counts but still has p = 1 hit the module's guard,
-    # i.e. the Wald fit failed. Those are convergence failures, not nulls.
-    mat, _ = pseudobulk.aggregate(sub, sample_key="donor",
-                                  group_key="condition", min_cells=MIN_CELLS)
-    has_counts = set(mat.columns[(mat.sum(axis=0) > 0).to_numpy()])
-    stuck = nb[(nb["pval"] >= 1.0) & nb.index.isin(has_counts)].index.tolist()
+    # The module labels its own fits: "failed" (no finite Wald variance, p
+    # left at 1) and "separated" (counts in one condition only, coefficient
+    # unbounded). Both are reported as categories rather than as nulls or as
+    # effects. (This used to be inferred from p == 1, which also catches
+    # genes that legitimately have p = 1.)
+    stuck = nb.index[nb["fit_status"] == "failed"].tolist()
+    separated = nb.index[nb["fit_status"] == "separated"].tolist()
 
     return {"label": label, "pb": pb, "nb": nb, "t_pb": t_pb, "t_nb": t_nb,
-            "failed": stuck}
+            "failed": stuck, "separated": separated}
 
 
 def usable_subset(adata, ct):
@@ -367,10 +504,16 @@ def usable_subset(adata, ct):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--null-on", default="CD4", type=str,
-                    help="cell type substring for the permutation null")
+    ap.add_argument("--null-on", default="all", type=str,
+                    help="'all' (every tested cell type) or comma-separated "
+                         "cell type substrings for the balanced null; the "
+                         "fair-coin family is always run on the primary "
+                         "type (CD4)")
     ap.add_argument("--n-perm", default=N_PERM, type=int,
-                    help="draws per family (fair-coin and balanced each)")
+                    help="fair-coin draws on the primary type")
+    ap.add_argument("--n-balanced", default=200, type=int,
+                    help="max DISTINCT balanced draws per type (the plan "
+                         "space is smaller for every real panel)")
     args = ap.parse_args(argv)
 
     adata = data.load_kang()
@@ -408,6 +551,14 @@ def main(argv=None):
         if r["failed"]:
             print(f"  GLM did not fit {len(r['failed'])} genes that carry "
                   f"counts (first: {r['failed'][:5]})")
+        if r["separated"]:
+            print(f"  GLM separated on {len(r['separated'])} genes "
+                  f"(|coef| > {nbglm.SEPARATION_LOG2:.0f} log2; first: "
+                  f"{r['separated'][:5]})")
+        print(f"  log2FC mean offset (glm - pb) {agr['mean_diff']:+.4f}, "
+              f"max |diff| {agr['max_abs_diff']:.4f}")
+        stat_counts = fit_status_counts(r["nb"])
+        cagr = coef_agreement(r["pb"], r["nb"])
 
         summary.append({
             "cell_type": ct, "cells": int(sub.n_obs),
@@ -417,6 +568,10 @@ def main(argv=None):
             "t_pb_s": round(r["t_pb"], 2), "t_nb_s": round(r["t_nb"], 2),
             "glm_failures": len(r["failed"]),
             "glm_failed_genes": ";".join(r["failed"]),
+            "glm_separated_genes": ";".join(r["separated"]),
+            **stat_counts,
+            "glm_coef_pearson_ok_fits": cagr["pearson"],
+            "glm_coef_n_ok_fits": cagr["n_genes"],
         })
         pairs[ct] = r["pb"][["log2fc", "qval"]].join(
             r["nb"][["log2fc", "qval", "log2fc_glm"]], how="outer",
@@ -426,74 +581,118 @@ def main(argv=None):
     if not frames:
         raise SystemExit("no cell type had enough donors")
 
-    # ---- permutation null on the primary cell type ----------------------
-    target = [ct for ct in frames if args.null_on.lower() in ct.lower()]
-    if not target:
-        raise SystemExit(f"no cell type matches {args.null_on!r}")
+    # ---- permutation nulls --------------------------------------------
+    target = [ct for ct in frames if "cd4" in ct.lower()
+              or ct == PRIMARY] or list(frames)[:1]
     primary = target[0]
-    sub, _ = usable_subset(adata, primary)
-
-    small_set = set(null_gene_set(frames[primary]["pb"], frames[primary]["nb"]))
-    n_donor_total = sub.obs["donor"].nunique()
-    print(f"\npermutation null on {primary}: {args.n_perm} fair-coin draws + "
-          f"{args.n_perm} balanced draws (k={n_donor_total // 2}), "
-          f"{len(small_set)} small-effect genes tracked")
+    if args.null_on.strip().lower() == "all":
+        null_types = list(frames)
+    else:
+        wanted = [w.strip().lower() for w in args.null_on.split(",")
+                  if w.strip()]
+        null_types = [ct for ct in frames
+                      if any(w in ct.lower() for w in wanted)]
+        if not null_types:
+            raise SystemExit(f"no cell type matches {args.null_on!r}")
 
     records = []
-    for balanced in (False, True):
-        for i in range(args.n_perm):
-            rng = np.random.default_rng(1000 + i)
-            perm = permute_adata(sub, rng, balanced=balanced)
-            flipped = _n_donors_flipped(sub, perm)
+
+    def record(draw, ct, family, i, flipped, used, held, n_avail, small):
+        rec = {
+            "cell_type": ct, "family": family, "perm": i,
+            "balanced": family == "balanced", "n_donors_flipped": len(flipped),
+            "n_donors_used": len(used), "held_out": held,
+            "donors_used": "|".join(used),
+            "donors_flipped": "|".join(flipped),
+            "n_plans_available": n_avail, **draw,
+        }
+        records.append(rec)
+        return rec
+
+    # fair-coin family, primary type only (the README table's k-dependence)
+    sub, _ = usable_subset(adata, primary)
+    small_set = set(null_gene_set(frames[primary]["pb"],
+                                  frames[primary]["nb"]))
+    n_donor_total = sub.obs["donor"].nunique()
+    donors_all = sorted(sub.obs["donor"].astype(str).unique())
+    print(f"\nfair-coin null on {primary}: {args.n_perm} draws, "
+          f"{len(small_set)} small-effect genes tracked")
+    for i in range(args.n_perm):
+        rng = np.random.default_rng(1000 + i)
+        perm = permute_adata(sub, rng, balanced=False)
+        flipped = _n_donors_flipped(sub, perm)
+        ok, problems = check_cell_swap(
+            sub.obs["donor"].to_numpy(), perm.obs["donor"].to_numpy(),
+            sub.obs["condition"].to_numpy(), perm.obs["condition"].to_numpy())
+        if not ok:
+            raise SystemExit(f"invalid cell swap: {problems}")
+        b_d, b_c = _sample_level_rows(sub)
+        a_d, a_c = _sample_level_rows(perm)
+        ok_s, problems_s = permutation.donor_structure_preserved(
+            b_d, a_d, b_c, a_c)
+        if not ok_s:
+            raise SystemExit(f"donor structure broken: {problems_s}")
+        draw = evaluate_draw(perm, small_set)
+        flipped_names = [d for d in donors_all
+                         if not np.array_equal(
+                             sub.obs["condition"].to_numpy()[
+                                 sub.obs["donor"].astype(str).to_numpy() == d],
+                             perm.obs["condition"].to_numpy()[
+                                 perm.obs["donor"].astype(str).to_numpy()
+                                 == d])]
+        rec = record(draw, primary, "coin", i, flipped_names, donors_all,
+                     None, np.nan, small_set)
+        print(f"  coin     {i + 1:>2} (k={flipped}): pseudobulk "
+              f"{rec['fp_pseudobulk']} ({rec['fp_pseudobulk_null']} "
+              f"small-effect), nb_glm {rec['fp_nb_glm']} "
+              f"({rec['fp_nb_glm_null']})", flush=True)
+
+    # balanced family: distinct plans on every requested type
+    for ct in null_types:
+        sub, _ = usable_subset(adata, ct)
+        small = set(null_gene_set(frames[ct]["pb"], frames[ct]["nb"]))
+        units = sorted(sub.obs["donor"].astype(str).unique())
+        rng = np.random.default_rng(2000)
+        try:
+            specs = permutation.balanced_plan_specs(units, rng,
+                                                    args.n_balanced)
+        except ValueError as exc:
+            print(f"\nbalanced null skipped for {ct}: {exc}")
+            continue
+        avail = permutation.n_plans_available(len(units))
+        print(f"\nbalanced null on {ct}: {len(specs)} distinct draws "
+              f"({avail} plans exist for {len(units)} donors), "
+              f"{len(small)} small-effect genes", flush=True)
+        for i, (held, used, plan) in enumerate(specs):
+            perm, base = permute_with_plan(sub, plan, used)
             ok, problems = check_cell_swap(
-                sub.obs["donor"].to_numpy(), perm.obs["donor"].to_numpy(),
-                sub.obs["condition"].to_numpy(),
+                base.obs["donor"].to_numpy(), perm.obs["donor"].to_numpy(),
+                base.obs["condition"].to_numpy(),
                 perm.obs["condition"].to_numpy())
             if not ok:
                 raise SystemExit(f"invalid cell swap: {problems}")
-            if balanced and flipped != n_donor_total // 2:
-                raise SystemExit(f"balanced draw flipped {flipped} of "
-                                 f"{n_donor_total} donors")
-            # the sample-level invariant the module was written for
-            b_d, b_c = _sample_level_rows(sub)
-            a_d, a_c = _sample_level_rows(perm)
-            ok_s, problems_s = permutation.donor_structure_preserved(
-                b_d, a_d, b_c, a_c)
-            if not ok_s:
-                raise SystemExit(f"donor structure broken: {problems_s}")
+            flipped_names = sorted(u for u in used if plan.get(u))
+            if len(flipped_names) != len(used) // 2:
+                raise SystemExit(f"balanced draw flipped "
+                                 f"{len(flipped_names)} of {len(used)}")
+            draw = evaluate_draw(perm, small)
+            rec = record(draw, ct, "balanced", i, flipped_names, used, held,
+                         avail, small)
+            if (i + 1) % 10 == 0 or i + 1 == len(specs):
+                print(f"  balanced {i + 1:>3}/{len(specs)} ({ct}): "
+                      f"pb {rec['fp_pseudobulk']} nb {rec['fp_nb_glm']} "
+                      f"(small-effect {rec['fp_pseudobulk_null']}/"
+                      f"{rec['fp_nb_glm_null']})", flush=True)
 
-            p_pb = de.pseudobulk_de(perm, "condition", "donor", "stim",
-                                    "ctrl", paired=True, min_cells=MIN_CELLS)
-            p_nb = nbglm.nbglm_de(perm, "condition", "donor", "stim",
-                                  "ctrl", paired=True, min_cells=MIN_CELLS)
-            c_pb = called_genes(p_pb)
-            c_nb = called_genes(p_nb)
-            rec = {
-                "perm": i,
-                "balanced": balanced,
-                "n_donors_flipped": flipped,
-                "fp_pseudobulk": len(c_pb),
-                "fp_nb_glm": len(c_nb),
-                "fp_pseudobulk_null": len(c_pb & small_set),
-                "fp_nb_glm_null": len(c_nb & small_set),
-                "n_pseudobulk": int(len(p_pb)),
-                "n_nb_glm": int(len(p_nb)),
-                "n_small_set": len(small_set),
-            }
-            records.append(rec)
-            tag = "balanced" if balanced else "coin    "
-            print(f"  {tag} {i + 1:>2} (k={flipped}): pseudobulk "
-                  f"{rec['fp_pseudobulk']} ({rec['fp_pseudobulk_null']} "
-                  f"small-effect), nb_glm {rec['fp_nb_glm']} "
-                  f"({rec['fp_nb_glm_null']})", flush=True)
-
-    null = null_summary(records)
-    print("\nnull false positives per permutation:")
+    null = null_summary([r for r in records if r["cell_type"] == primary])
+    print("\nnull false positives per permutation on " + primary
+          + " (coin + balanced):")
     print(null.to_string(index=False))
-    bal_only = null[["method", "n_balanced", "mean_fp_balanced",
-                     "max_fp_balanced"]]
-    print("\nbalanced draws only (k = n/2, the strictly-null plans):")
-    print(bal_only.to_string(index=False))
+    bal_tab = balanced_table(records, np.random.default_rng(7))
+    print("\nbalanced family, per cell type (small-effect genes; CI over "
+          "draws):")
+    print(bal_tab.to_string(index=False,
+                            float_format=lambda v: f"{v:.4g}"))
 
     # ---- persist --------------------------------------------------------
     pd.DataFrame(summary).to_csv(RESULTS / "nbglm_real_summary.csv",
@@ -503,6 +702,7 @@ def main(argv=None):
     pd.concat(isg_rows.values(), keys=isg_rows.keys(),
               names=["cell_type"]).to_csv(RESULTS / "nbglm_real_isg.csv")
     pd.DataFrame(records).to_csv(RESULTS / "nbglm_real_null.csv", index=False)
+    bal_tab.to_csv(RESULTS / "nbglm_real_null_balanced.csv", index=False)
 
     prim = frames[primary]
     p_ov = overlap_stats(prim["pb"], prim["nb"])
