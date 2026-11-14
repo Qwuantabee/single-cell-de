@@ -33,6 +33,12 @@ FIG = ROOT / "figures"
 FIG.mkdir(exist_ok=True)
 RESULTS = ROOT / "results"
 
+# Replicate counts that scripts/simulation_study.py hard-codes (its CSVs store
+# means only): experiment_sample_variation uses range(5), experiment_normalisation
+# range(6).
+SWEEP_REPS = 5
+NORM_REPS = 6
+
 
 def _need(name):
     path = RESULTS / name
@@ -99,24 +105,38 @@ def fig_null():
     """False positives when nothing changes."""
     df = _need("sim_null.csv")
     n_genes = int(df["n_genes"].iloc[0])
+    bh = _maybe("bh_null_expectation.csv", "scripts/bh_null_expectation.py")
 
     fig, ax = plt.subplots(figsize=(5.5, 4))
     x = np.arange(len(df))
     ax.bar(x - 0.2, df["per_cell"], width=0.4, label="per-cell Wilcoxon",
            color="C3", edgecolor="black", linewidth=0.5)
-    ax.bar(x + 0.2, df["pseudobulk"], width=0.4, label="pseudobulk",
+    ax.bar(x + 0.2, df["pseudobulk"], width=0.4, label="pseudobulk paired t",
            color="C0", edgecolor="black", linewidth=0.5)
     ax.axhline(0.05 * n_genes, ls="--", lw=1, color="grey",
-               label="5% of genes tested")
-    ax.set(xlabel="simulation replicate", ylabel="genes called significant",
-           title=f"False positives on null data ({n_genes} genes, nothing changed)")
+               label=f"{0.05 * n_genes:.0f} = 5% of genes (uncorrected p < 0.05)")
+    ax.set(xlabel="simulation replicate",
+           ylabel=f"genes called significant\n(of {n_genes}, BH q < 0.05)",
+           title="Nothing changed, yet per-cell Wilcoxon calls "
+                 f"{df['per_cell'].mean() / n_genes:.0%} of genes;\n"
+                 f"pseudobulk calls {df['pseudobulk'].mean() / n_genes:.0%}")
     ax.title.set_fontsize(10)
     ax.set_xticks(x)
     ax.set_xticklabels(df["rep"] + 1)
-    ax.legend(frameon=False, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(FIG / "null_false_positives.png", dpi=150)
-    plt.close(fig)
+    for xi, v in zip(x + 0.2, df["pseudobulk"]):
+        ax.text(xi, v + 6, f"{v:.0f}", ha="center", va="bottom", fontsize=7)
+    ax.set_ylim(0, df["per_cell"].max() * 1.5)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    note = ""
+    if bh is not None:
+        note = (f" Under BH an exact null gives a mean of "
+                f"{bh['mean_rejections'].iloc[0]:.3f} calls, not "
+                f"{0.05 * n_genes:.0f}.")
+    _save(fig, "null_false_positives.png",
+          f"n = {len(df)} simulated replicates, {n_genes} genes, 0 truly changed; "
+          f"mean per-cell {df['per_cell'].mean():.1f} ({df['per_cell'].mean() / n_genes:.1%}), "
+          f"pseudobulk {df['pseudobulk'].mean():.1f}.{note}\n"
+          "source: results/sim_null.csv, results/bh_null_expectation.csv")
 
 
 def fig_power():
@@ -128,30 +148,53 @@ def fig_power():
 
     methods = list(agg.index)
     x = np.arange(len(methods))
+    n_true = int((df["tp"] + df["fn"]).iloc[0])
     axes[0].bar(x - 0.2, agg["tp"], width=0.4, label="true positives",
                 color="C0", edgecolor="black", linewidth=0.5)
     axes[0].bar(x + 0.2, agg["fp"], width=0.4, label="false positives",
                 color="C3", edgecolor="black", linewidth=0.5)
-    axes[0].axhline(50, ls="--", lw=1, color="grey", label="50 genes truly changed")
+    for off, col in ((-0.2, "tp"), (0.2, "fp")):
+        for xi, v in zip(x + off, agg[col]):
+            axes[0].text(xi, v + 5, f"{v:.1f}", ha="center", va="bottom",
+                         fontsize=7.5)
+    axes[0].axhline(n_true, ls="--", lw=1, color="grey",
+                    label=f"{n_true} genes truly changed")
+    names = {"per_cell": "per-cell Wilcoxon", "pseudobulk": "pseudobulk paired t"}
     axes[0].set_xticks(x)
-    axes[0].set_xticklabels(methods)
-    axes[0].set_ylabel("genes")
-    axes[0].set_title("What each method calls", fontsize=10)
-    axes[0].legend(frameon=False, fontsize=8)
+    axes[0].set_xticklabels([names.get(m, m) for m in methods])
+    axes[0].set_ylim(0, agg[["tp", "fp"]].to_numpy().max() * 1.3)
+    axes[0].set_ylabel("genes called (mean per replicate)")
+    axes[0].set_title(
+        f"Both find the true genes ({agg.at['per_cell', 'tp']:.1f} and "
+        f"{agg.at['pseudobulk', 'tp']:.1f} of {n_true});\n"
+        f"per-cell adds {agg.at['per_cell', 'fp']:.1f} false calls, pseudobulk "
+        f"{agg.at['pseudobulk', 'fp']:.1f}", fontsize=10)
+    axes[0].legend(frameon=False, fontsize=8, loc="upper right")
 
     axes[1].bar(x, agg["fdp"], width=0.5,
                 color=["C3" if m == "per_cell" else "C0" for m in methods],
                 edgecolor="black", linewidth=0.5)
+    for xi, v in zip(x, agg["fdp"]):
+        axes[1].text(xi, v + 0.02, f"{v:.2f}", ha="center", va="bottom",
+                     fontsize=9, fontweight="bold")
     axes[1].axhline(0.05, ls="--", lw=1, color="grey", label="nominal 5%")
     axes[1].set_xticks(x)
-    axes[1].set_xticklabels(methods)
+    axes[1].set_xticklabels([names.get(m, m) for m in methods])
+    axes[1].set_ylim(0, 1.05)
     axes[1].set_ylabel("observed false discovery proportion")
-    axes[1].set_title("Both have ~100% power", fontsize=10)
-    axes[1].legend(frameon=False, fontsize=8)
+    axes[1].set_title(
+        "Observed false discovery proportion:\n"
+        f"per-cell {agg.at['per_cell', 'fdp']:.2f}, pseudobulk "
+        f"{agg.at['pseudobulk', 'fdp']:.2f} (power {agg.at['per_cell', 'power']:.2f} "
+        f"vs {agg.at['pseudobulk', 'power']:.2f})", fontsize=10)
+    axes[1].legend(frameon=False, fontsize=8, loc="upper right")
 
-    fig.tight_layout()
-    fig.savefig(FIG / "power_vs_fdp.png", dpi=150)
-    plt.close(fig)
+    n_genes = int((df["tp"] + df["fp"] + df["fn"] + df["tn"]).iloc[0])
+    _save(fig, "power_vs_fdp.png",
+          f"n = {df['rep'].nunique()} simulated replicates per method, {n_true} of "
+          f"{n_genes} genes given a real 2-fold effect (scripts/simulation_study.py), "
+          "BH q < 0.05; bars are means.\n"
+          "source: results/sim_power.csv")
 
 
 def fig_sample_sweep():
@@ -162,16 +205,22 @@ def fig_sample_sweep():
     ax.plot(df["sample_sd"], df["per_cell"], "o-", color="C3",
             label="per-cell Wilcoxon")
     ax.plot(df["sample_sd"], df["pseudobulk"], "o-", color="C0",
-            label="pseudobulk")
+            label="pseudobulk paired t")
+    for sd, v in zip(df["sample_sd"], df["per_cell"]):
+        ax.text(sd, v + 12, f"{v:.1f}", ha="center", va="bottom", fontsize=7.5)
+    first, last = df.iloc[0], df.iloc[-1]
     ax.set(xlabel="sample-level variation (donor x condition, log SD)",
-           ylabel="false positives (of 500 null genes)",
-           title="Per-cell testing is valid only when samples differ by\n"
-                 "sampling noise alone")
+           ylabel="false positives (of 500 null genes, BH q < 0.05)",
+           title=f"Per-cell false positives rise from {first['per_cell']:.0f} to "
+                 f"{last['per_cell']:.0f} as sample-level\n"
+                 f"variation grows; pseudobulk stays at {df['pseudobulk'].max():.0f}")
     ax.title.set_fontsize(10)
-    ax.legend(frameon=False, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(FIG / "sample_variation_sweep.png", dpi=150)
-    plt.close(fig)
+    ax.set_ylim(-15, df["per_cell"].max() * 1.15)
+    ax.legend(frameon=False, fontsize=8, loc="center right")
+    _save(fig, "sample_variation_sweep.png",
+          f"n = {len(df)} sample-SD values, mean of {SWEEP_REPS} simulated replicates "
+          "each (scripts/simulation_study.py); 500 null genes, nothing truly changed.\n"
+          "source: results/sim_sample_sweep.csv")
 
 
 def fig_normalisation():
@@ -185,15 +234,26 @@ def fig_normalisation():
                 color="C3" if norm == "cpm" else "C0",
                 label="total-count CPM" if norm == "cpm"
                       else "median-of-ratios")
+        for n, v in zip(g["n_donors"], g["fdp"]):
+            ax.text(n, v + (0.008 if norm == "cpm" else -0.008), f"{v:.3f}",
+                    ha="center", va="bottom" if norm == "cpm" else "top",
+                    fontsize=7.5)
     ax.axhline(0.05, ls="--", lw=1, color="grey", label="nominal 5%")
+    cpm = df[df["normalisation"] == "cpm"].sort_values("n_donors")
+    mor = df[df["normalisation"] == "median_ratio"]
     ax.set(xlabel="number of donors",
            ylabel="observed false discovery proportion",
-           title="Composition bias does not average out")
+           title="Total-count CPM bias grows with donors "
+                 f"({cpm['fdp'].iloc[0]:.2f} to {cpm['fdp'].iloc[-1]:.2f});\n"
+                 f"median-of-ratios stays at {mor['fdp'].min():.2f}-{mor['fdp'].max():.2f}")
     ax.title.set_fontsize(10)
-    ax.legend(frameon=False, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(FIG / "normalisation.png", dpi=150)
-    plt.close(fig)
+    ax.set_xticks(sorted(df["n_donors"].unique()))
+    ax.set_ylim(0, df["fdp"].max() * 1.2)
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    _save(fig, "normalisation.png",
+          f"n = {NORM_REPS} simulated replicates per point (mean), 50 of 500 genes truly "
+          "changed (scripts/simulation_study.py), BH q < 0.05.\n"
+          "source: results/sim_normalisation.csv")
 
 
 def fig_real_null():
@@ -208,19 +268,26 @@ def fig_real_null():
     ax.plot(df["split"] + 1, df["per_cell"], "o-", color="C3",
             label="per-cell Wilcoxon")
     ax.plot(df["split"] + 1, df["pseudobulk"], "o-", color="C0",
-            label="pseudobulk")
+            label="pseudobulk paired t")
     n_genes = int(df["n_genes_sc"].iloc[0])
     ax.axhline(0.05 * n_genes, ls="--", lw=1, color="grey",
-               label=f"5% of {n_genes} genes")
+               label=f"5% of {n_genes:,} genes (uncorrected p < 0.05)")
     ax.set(xlabel="random donor split (control cells only)",
-           ylabel="genes called significant",
-           title="Real data, Kang 2018 CD14+ monocytes:\n"
-                 "donor labels shuffled, so every call is a false positive")
+           ylabel=f"genes called significant\n(of {n_genes:,}, BH q < 0.05)",
+           title="Real data (Kang 2018, CD14+ monocytes), donors shuffled:\n"
+                 f"per-cell calls a median {df['per_cell'].median():.0f} false genes "
+                 f"per split, pseudobulk {df['pseudobulk'].median():.0f}")
     ax.title.set_fontsize(10)
-    ax.legend(frameon=False, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(FIG / "real_null.png", dpi=150)
-    plt.close(fig)
+    ax.set_xticks(df["split"] + 1)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    share = df["per_cell"] / df["n_genes_sc"]
+    _save(fig, "real_null.png",
+          f"n = {len(df)} random donor splits of control cells only "
+          f"({int(df['n_cells'].iloc[0]):,} cells). Per-cell: median "
+          f"{df['per_cell'].median():.0f} ({share.median():.2%} of genes), mean "
+          f"{df['per_cell'].mean():.1f} ({share.mean():.1%}), max {df['per_cell'].max()}; "
+          f"pseudobulk max {df['pseudobulk'].max()}.\n"
+          "source: results/false_positives.csv")
 
 
 def fig_isg_ranking():
@@ -242,12 +309,23 @@ def fig_isg_ranking():
     axes[0].bar(x + 0.2, df["median_isg_rank_by_effect"], width=0.4,
                 label="ranked by effect size", color="C0",
                 edgecolor="black", linewidth=0.5)
+    for off, col in ((-0.2, "median_isg_rank_by_q"),
+                     (0.2, "median_isg_rank_by_effect")):
+        for xi, v in zip(x + off, df[col]):
+            axes[0].text(xi, v * 1.12, f"{v:.0f}", ha="center", va="bottom",
+                         fontsize=7)
     axes[0].set_yscale("log")
+    axes[0].set_ylim(1, df["median_isg_rank_by_q"].max() * 2.5)
     axes[0].set_xticks(x)
     axes[0].set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
-    axes[0].set_ylabel("median rank of known interferon genes")
-    axes[0].set_title("Where the real biology lands in the list", fontsize=10)
-    axes[0].legend(frameon=False, fontsize=8)
+    axes[0].set_ylabel("median rank of known interferon genes\n"
+                       "(among genes significant at BH q < 0.05)")
+    axes[0].set_title(
+        "Ranked by q-value, interferon genes sit at median rank "
+        f"{df['median_isg_rank_by_q'].median():.0f};\n"
+        f"by effect size {df['median_isg_rank_by_effect'].median():.0f} "
+        f"(median over {len(df)} cell types)", fontsize=10)
+    axes[0].legend(frameon=False, fontsize=8, loc="upper right")
 
     axes[1].bar(x - 0.2, df["isgs_top12_by_q"], width=0.4,
                 label="ranked by q-value", color="C3",
@@ -255,15 +333,25 @@ def fig_isg_ranking():
     axes[1].bar(x + 0.2, df["isgs_top12_by_effect"], width=0.4,
                 label="ranked by effect size", color="C0",
                 edgecolor="black", linewidth=0.5)
+    for off, col in ((-0.2, "isgs_top12_by_q"), (0.2, "isgs_top12_by_effect")):
+        for xi, v in zip(x + off, df[col]):
+            axes[1].text(xi, v + 0.15, f"{v}", ha="center", va="bottom", fontsize=7.5)
+    axes[1].set_ylim(0, 13)
     axes[1].set_xticks(x)
     axes[1].set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
-    axes[1].set_ylabel("known interferon genes in the top 12")
-    axes[1].set_title("Of 12 canonical ISGs", fontsize=10)
-    axes[1].legend(frameon=False, fontsize=8)
+    axes[1].set_ylabel("known interferon genes in the top 12 of the list")
+    axes[1].set_title(
+        "Interferon genes among the top 12: "
+        f"{df['isgs_top12_by_q'].sum()} of {12 * len(df)} by q-value,\n"
+        f"{df['isgs_top12_by_effect'].sum()} of {12 * len(df)} by effect size "
+        f"(12 genes x {len(df)} cell types)", fontsize=10)
+    axes[1].legend(frameon=False, fontsize=8, loc="upper right")
 
-    fig.tight_layout()
-    fig.savefig(FIG / "isg_ranking.png", dpi=150)
-    plt.close(fig)
+    _save(fig, "isg_ranking.png",
+          f"n = {len(df)} cell types (5-8 donors each), 12 canonical interferon genes "
+          "per type, paired pseudobulk test. Ranks are within the genes already "
+          "significant at BH q < 0.05 (README 'Which rank').\n"
+          "source: results/real_analysis_summary.csv")
 
 
 def fig_mixed_null():
