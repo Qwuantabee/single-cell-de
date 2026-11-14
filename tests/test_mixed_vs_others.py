@@ -182,3 +182,93 @@ def test_combine_results_orders_types_and_requires_parts(tmp_path):
     empty.mkdir()
     with pytest.raises(SystemExit):
         mvo.combine_results(parts=empty, results=tmp_path)
+
+
+def test_null_draw_detail_records_the_donors_it_used():
+    """C3: the CSV used to carry no donors_used, so a 7-donor panel quietly
+    became 6 (NK) or 5 became 4 and the table still said 7 / 5."""
+    logcpm, meta = _profiles(n_donors=5, n_genes=12, effect=0.0, noise=0.2)
+    genes = list(logcpm.columns)
+    d = mvo.null_draw_detail(logcpm, meta, genes, np.random.default_rng(0),
+                             balanced=True)
+    assert len(d["used"]) == 4
+    assert d["held_out"] is not None and d["held_out"] not in d["used"]
+    assert len(d["flipped"]) == 2 and set(d["flipped"]) <= set(d["used"])
+    assert d["structure_ok"] is True
+    assert 0.0 <= d["raw_pb"] <= 1.0 and 0.0 <= d["raw_mx"] <= 1.0
+
+
+def test_null_draw_detail_honours_an_explicit_spec():
+    logcpm, meta = _profiles(n_donors=6, n_genes=10, effect=0.0, noise=0.2)
+    genes = list(logcpm.columns)
+    units = mvo.paired_units(meta)
+    (held, used, plan), = mvo.balanced_plan_specs(
+        units, np.random.default_rng(0), max_draws=1)
+    d = mvo.null_draw_detail(logcpm, meta, genes, np.random.default_rng(1),
+                             balanced=True, units=units,
+                             spec=(held, used, plan))
+    assert d["held_out"] is None and d["used"] == used
+    assert d["flipped"] == sorted(u for u in used if plan[u])
+
+
+def test_distinct_draws_on_four_donors_never_repeat():
+    """21;21;21 on CD8 was the same plan evaluated three times."""
+    units = [f"p{i}" for i in range(4)]
+    specs = mvo.balanced_plan_specs(units, np.random.default_rng(0),
+                                    max_draws=200)
+    assert len(specs) == 3 == mvo.n_plans_available(4)
+    keys = {tuple(sorted(u for u, f in p.items() if f)) for _h, _u, p in specs}
+    assert len(keys) == 3
+
+
+def test_null_gene_pool_is_small_effect_and_excludes_isgs():
+    pb = pd.DataFrame({"log2fc": [0.1, -0.2, 0.9, -1.4, 0.3, 0.0]},
+                      index=["a", "b", "big", "neg", "ISG15", "c"])
+    pool = mvo.null_gene_pool(pb, list(pb.index) + ["absent"],
+                              markers=["ISG15"], cutoff=0.5)
+    assert pool == ["a", "b", "c"]
+
+
+def test_summarise_draws_has_cis_and_counts_draws_with_any_fp():
+    draws = [{"fp_pb": 0, "fp_mx": k, "raw_pb": 0.0, "raw_mx": 0.02 * k}
+             for k in (0, 0, 1, 3, 0)]
+    out = mvo.summarise_draws(draws, np.random.default_rng(0))
+    mx = out["mixed"]
+    assert mx["draws"] == 5 and mx["n_draws_with_any_fp"] == 2
+    assert mx["p_any"] == pytest.approx(0.4)
+    assert mx["p_any_lo"] < 0.4 < mx["p_any_hi"]
+    assert mx["fp_ci_lo"] <= mx["mean_false_positives"] <= mx["fp_ci_hi"]
+    assert mx["per_draw"] == "0;0;1;3;0"
+    pb = out["pseudobulk"]
+    assert pb["p_any"] == 0.0 and pb["p_any_lo"] == 0.0
+    assert pb["p_any_hi"] > 0.3            # 0/5 does not show calibration
+
+
+def test_unbalanced_rows_are_not_flagged_as_a_null():
+    """C9: the contrast arm used to carry expected_fp_bh and a ratio of up to
+    892x with nothing saying it was not a null, and the donor-preserved flag
+    was a hard-coded True."""
+    def draw(fp, ok=True):
+        return {"fp_pb": 0, "fp_mx": fp, "raw_pb": 0.0, "raw_mx": 0.0,
+                "fp_pb_extra": 0, "used": ["p0", "p1", "p2", "p3"],
+                "held_out": None, "flipped": ["p1", "p2"], "boundary": 0.3,
+                "structure_ok": ok}
+    bal = [draw(0), draw(1)]
+    unb = [draw(5), draw(9, ok=False)]
+    fam = (("balanced", mvo.summarise_draws(bal), bal, True),
+           ("unbalanced", mvo.summarise_draws(unb), unb, False))
+    rows, draws = mvo.build_null_rows("X", "small_effect", 4, 500, 2, 3, fam)
+    df = pd.DataFrame(rows)
+    b = df[df.balance == "balanced"]
+    u = df[df.balance == "unbalanced"]
+    assert b["is_null"].all() and not u["is_null"].any()
+    assert b["expected_fp_bh"].notna().all()
+    assert u["expected_fp_bh"].isna().all()
+    assert u["ratio_observed_expected"].isna().all()
+    assert b["permutation_preserved_donors"].all()
+    assert not u["permutation_preserved_donors"].any()   # one draw failed
+    assert (df["n_donors_used"] == 4).all()
+    assert df["donors_used_per_draw"].str.contains("p0|p1|p2|p3",
+                                                   regex=False).all()
+    assert len(draws) == 4 and {"donors_used", "donors_flipped"} <= set(
+        draws[0])

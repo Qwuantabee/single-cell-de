@@ -29,6 +29,17 @@ module is not a three-line wrapper around statsmodels.
    reported anyway, because a caller that wants to know whether the random
    effect is doing anything needs to see it.
 
+3. "converged" and "boundary" are different statements. `converged` is the
+   optimiser's own termination flag and says nothing about whether the
+   fitted variance component is an estimate: a fit that collapsed the random
+   intercept to zero (`boundary`, donor variance < BOUNDARY_VAR) is a
+   pooled-OLS fit that statsmodels still reports as converged. A pooled fit
+   has a different standard error from the paired t-test's, so the mixed
+   statistic can differ from the paired t on those genes. How many genes sit
+   on the boundary is measured per cell type in
+   results/mixed_vs_others_summary.csv (`mixed_pct_boundary`). Callers must
+   report boundary fits separately; they are in the `boundary` column.
+
 Cost: fitting one model per gene is orders of magnitude slower than the
 vectorised t-test, so per-cell fits are expected to be run on a deliberate
 subsample. scripts/mixed_vs_others.py measures both walls.
@@ -47,7 +58,9 @@ BOUNDARY_VAR = 1e-6
 
 
 def _fit(y, cond, donor, method="powell", maxiter=1000, df=np.inf):
-    """One gene. Returns (coef, pvalue, converged, donor_variance, boundary).
+    """One gene. Returns (coef, pvalue, converged, donor_variance, boundary,
+    stat) where stat = coef / se (the Wald statistic, before the reference
+    distribution is applied; NaN when the fit failed).
 
     df is the reference degrees of freedom for the fixed-effect test. The
     Wald p-value statsmodels returns uses a NORMAL reference (df=inf). On this
@@ -67,7 +80,7 @@ def _fit(y, cond, donor, method="powell", maxiter=1000, df=np.inf):
             fit = smf.mixedlm("y ~ cond", frame, groups=frame["donor"]).fit(
                 method=method, maxiter=maxiter)
         except (np.linalg.LinAlgError, ValueError, np.linalg.Error):
-            return np.nan, np.nan, False, np.nan, False
+            return np.nan, np.nan, False, np.nan, False, np.nan
 
     coef = fit.params.get("cond", np.nan)
     try:
@@ -85,7 +98,7 @@ def _fit(y, cond, donor, method="powell", maxiter=1000, df=np.inf):
     if not ok:
         # a p-value from a fit that did not converge is not a p-value
         coef_out = float(coef) if np.isfinite(coef) else np.nan
-        return coef_out, np.nan, False, donor_var, False
+        return coef_out, np.nan, False, donor_var, False, np.nan
 
     t_stat = coef / se
     if np.isfinite(df):
@@ -96,7 +109,7 @@ def _fit(y, cond, donor, method="powell", maxiter=1000, df=np.inf):
     # boundary fit: the random intercept collapsed, so the model is really
     # pooled. Reported separately from convergence, not folded into it.
     boundary = bool(not np.isfinite(donor_var) or donor_var < BOUNDARY_VAR)
-    return float(coef), pval, True, donor_var, boundary
+    return float(coef), pval, True, donor_var, boundary, float(t_stat)
 
 
 def _split_index(index, sample_key, condition_key):
@@ -128,7 +141,9 @@ def mixed_de(logcpm, sample_key, condition_key, group_a, group_b,
         two arms are no longer comparable.
 
     Returns one row per gene with the condition coefficient, its p-value,
-    whether the fit converged, and the donor variance component.
+    whether the fit converged, the donor variance component, `boundary`
+    (the variance component collapsed to ~0: converged but pooled, see the
+    module docstring) and `stat` (coef / se).
     Non-converged fits get pval=NaN rather than a discarded number: dropping
     them silently would bias the result towards the easy genes.
     """
@@ -160,12 +175,12 @@ def mixed_de(logcpm, sample_key, condition_key, group_a, group_b,
 
     rows = []
     for j, gene in enumerate(logcpm.columns):
-        coef, pval, ok, dvar, boundary = _fit(
+        coef, pval, ok, dvar, boundary, stat = _fit(
             y_all[:, j], cond, donor, method, maxiter, df=df)
-        rows.append((gene, coef, pval, ok, dvar, boundary))
+        rows.append((gene, coef, pval, ok, dvar, boundary, stat))
 
     out = pd.DataFrame(rows, columns=[
-        "gene", "coef", "pval", "converged", "donor_var", "boundary"]
+        "gene", "coef", "pval", "converged", "donor_var", "boundary", "stat"]
     ).set_index("gene")
     out["qval"] = _bh(out["pval"].to_numpy())
     out["log2fc"] = out["coef"]
@@ -184,8 +199,16 @@ def mixed_de_percell(values, genes, donor, condition, group_a, group_b,
         densifies, which is one reason per-cell fits are run on a subsample.
     donor / condition: per-cell labels.
 
-    The contrast is estimated within donor, so cells are not treated as
-    independent replicates -- that is the difference from single_cell_de.
+    WARNING -- not evaluated. A per-cell fit with (1 | donor) lets the donor
+    absorb donor-level offsets, but it does NOT absorb the donor x condition
+    (aliquot-level) variance: cells from one aliquot still share a
+    sample-level deviation that a donor intercept cannot see, which is the
+    mechanism README section 3 identifies as why per-cell tests fail. Cells
+    are therefore still effectively over-counted as replicates for the
+    condition effect, and nothing in this repo calibrates this function (no
+    null, no comparison against pseudobulk). The only per-cell result reported
+    is its wall-clock time and convergence rate. The function exists to time
+    the per-cell fit, not as a recommended test.
     """
     values = np.asarray(values, dtype=float)
     donor = np.asarray(donor).astype(str)
@@ -202,8 +225,8 @@ def mixed_de_percell(values, genes, donor, condition, group_a, group_b,
              and ((cond == 0.0) & (donor == d)).any()]
     df = len(pairs) - 1 if len(pairs) >= 2 else np.inf
     for j, gene in enumerate(genes):
-        coef, pval, ok, _dvar, _bd = _fit(values[:, j], cond, donor, method,
-                                          maxiter, df=df)
+        coef, pval, ok, _dvar, _bd, _stat = _fit(
+            values[:, j], cond, donor, method, maxiter, df=df)
         rows.append((gene, coef, pval, ok))
 
     out = pd.DataFrame(rows, columns=["gene", "log2fc", "pval", "converged"]

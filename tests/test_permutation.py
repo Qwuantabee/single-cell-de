@@ -124,3 +124,85 @@ def test_swap_on_a_donor_with_one_aliquot_does_not_invent_one():
                                       swap_probability=1.0)
     assert out[0] == "stim"
     assert sorted(out[1:]) == ["ctrl", "stim"]
+
+
+# --------------------------------------------------- distinct balanced plans
+
+
+def test_distinct_plan_counts_match_the_combinatorics():
+    # first unit fixed unflipped: C(n - 1, n / 2); a plan and its complement
+    # are the same draw
+    assert permutation.n_distinct_balanced_plans(4) == 3
+    assert permutation.n_distinct_balanced_plans(6) == 10
+    assert permutation.n_distinct_balanced_plans(8) == 35
+    with pytest.raises(ValueError):
+        permutation.n_distinct_balanced_plans(5)
+
+
+def test_four_donors_have_only_three_distinct_balanced_draws():
+    """The failure being fixed: sampling plans with replacement on a 4-donor
+    panel gave repeated draws (21;21;21) that looked like replicates."""
+    units = [f"d{i}" for i in range(4)]
+    plans = permutation.distinct_balanced_plans(units)
+    assert len(plans) == 3
+    keys = {tuple(sorted(u for u, f in p.items() if f)) for p in plans}
+    assert len(keys) == 3
+    for p in plans:
+        assert sum(p.values()) == 2
+        assert p["d0"] is False        # complements collapsed onto one rep.
+    # complements really are the same draw: no two plans are complementary
+    for a in keys:
+        comp = tuple(sorted(set(units) - set(a)))
+        assert comp not in keys or comp == a
+
+
+def test_distinct_plans_sampled_without_replacement_when_capped():
+    units = [f"d{i}" for i in range(8)]
+    plans = permutation.distinct_balanced_plans(
+        units, np.random.default_rng(0), max_plans=20)
+    keys = [tuple(sorted(u for u, f in p.items() if f)) for p in plans]
+    assert len(keys) == 20 and len(set(keys)) == 20
+    assert all(len(k) == 4 for k in keys)
+    with pytest.raises(ValueError):
+        permutation.distinct_balanced_plans(units, None, max_plans=5)
+
+
+def test_balanced_plan_specs_enumerates_every_odd_panel_draw_once():
+    """Five donors: hold one out (5 ways) x 3 plans on the other four = 15."""
+    units = [f"d{i}" for i in range(5)]
+    specs = permutation.balanced_plan_specs(
+        units, np.random.default_rng(0), max_draws=200)
+    assert permutation.n_plans_available(5) == 15
+    assert len(specs) == 15
+    keys = {(h, tuple(sorted(u for u, f in p.items() if f)))
+            for h, _used, p in specs}
+    assert len(keys) == 15                    # no repeats
+    for held, used, plan in specs:
+        assert held in units and held not in used and len(used) == 4
+        assert set(plan) == set(used)         # the held-out donor is not in it
+        assert sum(plan.values()) == 2
+
+
+def test_balanced_plan_specs_cap_and_availability():
+    assert permutation.n_plans_available(8) == 35
+    assert permutation.n_plans_available(7) == 70
+    assert permutation.n_plans_available(3) == 0
+    units = [f"d{i}" for i in range(7)]
+    specs = permutation.balanced_plan_specs(
+        units, np.random.default_rng(1), max_draws=10)
+    assert len(specs) == 10
+    keys = {(h, tuple(sorted(u for u, f in p.items() if f)))
+            for h, _u, p in specs}
+    assert len(keys) == 10
+
+
+def test_wilson_interval_and_bootstrap_ci_basic_properties():
+    lo, hi = permutation.wilson_interval(0, 70)
+    assert lo == 0.0 and 0.04 < hi < 0.07          # 0/70 does not rule out 5%
+    lo, hi = permutation.wilson_interval(35, 70)
+    assert lo < 0.5 < hi
+    lo, hi = permutation.bootstrap_ci([0, 0, 0, 0], np.random.default_rng(0))
+    assert (lo, hi) == (0.0, 0.0)
+    lo, hi = permutation.bootstrap_ci([1, 2, 3, 4, 5],
+                                      np.random.default_rng(0))
+    assert lo < 3.0 < hi
