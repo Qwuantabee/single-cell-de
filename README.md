@@ -298,46 +298,33 @@ So the GLM is anti-conservative on at least two of seven types under this null; 
 
 ## How the simulation got fixed
 
-The first version of this study produced the opposite of the published
-result: the per-cell test looked perfectly calibrated and pseudobulk looked
-broken. Both were artifacts.
-
-The simulator applied each donor's random effect identically to that donor's
-control and stimulated samples, and gave every sample the same number of
-cells. Under that model a donor's two samples differ only by Poisson noise
-over hundreds of cells, donor effects cancel exactly when cells are pooled,
-and the per-cell test has nothing to trip over. Real experiments are not like
-that. Adding an independent per-(donor, condition) effect — `sample_sd` —
-reproduced the known behaviour immediately.
-
-Worth recording because the failure mode was quiet: the code ran, produced
-plausible tables, and said something false. The thing that caught it was
-having a known answer to check against.
+The first version of this study produced the opposite of the published result: the per-cell test looked perfectly calibrated and pseudobulk looked broken. Both were artefacts. The simulator applied each donor's random effect identically to that donor's control and stimulated samples and gave every sample the same number of cells, so donor effects cancelled exactly when cells were pooled and the per-cell test had nothing to trip over. Adding an independent per-(donor, condition) effect (`sample_sd`) reproduced the known behaviour at once. The failure was quiet: the code ran, produced plausible tables, and said something false. A known answer to check against caught it.
 
 ## Layout
 
 ```
 src/scpipe/
     pseudobulk.py   aggregation, median-of-ratios size factors, filtering
-    de.py           per-cell Wilcoxon and pseudobulk t-test, BH correction
+    de.py           per-cell Wilcoxon, pseudobulk t-test, BH correction
     simulate.py     negative-binomial counts with donor and sample effects
-    preprocess.py   QC thresholds and the standard scanpy pipeline
+    preprocess.py   QC thresholds, standard scanpy pipeline
     data.py         real-dataset loading
 scripts/
     simulation_study.py     the four simulation experiments
-    false_positive_test.py  the null experiment on real data
-    real_analysis.py        ctrl vs stim per cell type, the positive control
-    nbglm_study.py          the GLM vs the t-test, simulated (power, FDP)
-    nbglm_real.py           the GLM vs the t-test, real Kang counts (§9)
-    mixed_vs_others.py      the mixed-model comparison of §8, all 7 cell types
-    bh_null_expectation.py  simulation behind the BH all-null reference (§8)
-    celltype_analysis.py    stratified analysis and composition shift (§7)
+    false_positive_test.py  null experiment on real data
+    real_analysis.py        ctrl vs stim per cell type, positive control
+    nbglm_study.py          GLM vs t-test, simulated (power, FDP)
+    nbglm_real.py           GLM vs t-test, real Kang counts (§9)
+    mixed_vs_others.py      mixed-model comparison, 7 cell types (§8)
+    bh_null_expectation.py  BH all-null reference simulation (§8)
+    celltype_analysis.py    stratified analysis, composition shift (§7)
     megakaryocyte_check.py  why megakaryocytes get no expression test (§7)
-    make_figures.py
+    make_figures.py         every figure, from results/*.csv
+results/ figures/   the CSVs behind every number; every plot
 tests/              121 tests, including calibration tests that assert the
-                    per-cell test fails and that it stops failing when
-                    sample-level variance is removed, and driver tests that
-                    pin the seven-type roster and the balanced null
+                    per-cell test fails and stops failing when sample-level
+                    variance is removed, and driver tests that pin the
+                    seven-type roster and the balanced null
 ```
 
 ## Setup
@@ -349,60 +336,23 @@ python scripts/simulation_study.py
 python scripts/false_positive_test.py --cell-type "CD14+ Monocytes"
 python scripts/real_analysis.py
 python scripts/mixed_vs_others.py       # --types "CD4 T cells" for one
-python scripts/make_figures.py
+python scripts/make_figures.py          # all figures; name some to rebuild only those
 ```
 
-Note on the dataset URL: `figshare.com/ndownloader/files/34464122` looks like
-a download link and is not — it is an async dispatch endpoint that answers
-`202` with `Content-Length: 0`, so a naive download writes an empty file and
-fails later with an unhelpful h5py error. `src/scpipe/data.py` uses the
-scverse host and checks the HDF5 magic bytes and md5 before returning.
-
-Python 3.14 has no anndata or h5py wheels yet; use 3.12 or 3.13.
+`make_figures.py` also reads the CSVs of `nbglm_study.py`, `nbglm_real.py`, `celltype_analysis.py` and `megakaryocyte_check.py`; a figure whose CSV is missing is skipped. The dataset URL `figshare.com/ndownloader/files/34464122` looks like a download link and is not: it is an async dispatch endpoint that answers `202` with `Content-Length: 0`, so a naive download writes an empty file and fails later with an unhelpful h5py error. `src/scpipe/data.py` uses the scverse host and checks the HDF5 magic bytes and md5. Python 3.14 has no anndata or h5py wheels yet; use 3.12 or 3.13.
 
 ## Still to do
 
-- ~~Replace the paired t-test on log counts with a proper negative-binomial GLM
-  (what DESeq2 and edgeR actually do), and check how much the normal
-  approximation costs on small donor counts.~~ **Done** — `src/scpipe/nbglm.py`
-  and `scripts/nbglm_study.py`; results in `results/sim_nbglm.csv`.
+- ~~Replace the paired t-test on log counts with a negative-binomial GLM (what DESeq2 and edgeR do), and check what the normal approximation costs on small donor counts.~~ **Done**: `src/scpipe/nbglm.py`, `scripts/nbglm_study.py`, `results/sim_nbglm.csv`.
 
-  The GLM is median-of-ratios size factors as an offset, per-gene method-of-
-  moments dispersion shrunk toward an expression trend, and a Wald test on the
-  condition coefficient referred to a t distribution with (samples − parameters)
-  degrees of freedom. Measured over 10 replicates per cell of the donor grid
-  (300 genes, 30 truly changed at log2 effect 1.0, BH α = 0.05): the *power* is
-  the column that moved. At **6 donors** the GLM found **97%** of the changed
-  genes against **68%** for the paired t-test, at the same observed false
-  discovery proportion (0.028 vs 0.042). At **12 donors** both reach 100% power
-  (FDP 0.057 vs 0.049) and at **24 donors** both are at 100% (FDP 0.043 vs
-  0.059) — identical to two decimals. At **3 donors** neither method calls
-  anything: 0% power for both, because the per-sample variance component
-  swamps a 2× effect at three pairs regardless of the test. So the normal
-  approximation is expensive exactly where it was suspected to be — the 3–8
-  donor range where most published designs live — and free above 12. Worth
-  noting that this simulator generates negative-binomial data, which is the
-  GLM's own model, so this is its best case; and the dispersion-trend floor in
-  `nbglm.py` was added while tuning on this same simulator, so the 97% / 68%
-  figures are not out-of-sample for that choice.
+  The GLM is median-of-ratios size factors as an offset, per-gene method-of-moments dispersion shrunk toward an expression trend, and a Wald test on the condition coefficient against a t distribution with (samples − parameters) df. Over 10 replicates per cell of the donor grid (300 genes, 30 truly changed at log2 effect 1.0, BH α = 0.05), power is what moved:
 
-  **Every number in the paragraph above is simulated, not real.** The two
-  quantities it reports — power and observed FDP — need genes whose true
-  status is known, and the real dataset does not have any, so they can only
-  come from a simulator. Which is exactly why the hedge that used to sit here
-  ("on real data the gap is unlikely to be larger than this and could be
-  smaller") has been replaced by a measurement: `scripts/nbglm_real.py` runs
-  both methods on the same real pseudobulk matrix, results in
-  `results/nbglm_real_*.csv`. See **§9** below for what came back, and for
-  what can and cannot be concluded from real counts.
+  ![simulated NB GLM vs paired t](figures/nbglm_sim_power.png)
+
+  *Simulated: at 6 donors the NB GLM finds 97% of the changed genes against 68% for the paired t-test, at the same observed false discovery proportion (0.028 vs 0.042); both reach 100% from 12 donors.*
+
+  FDP is 0.057 vs 0.049 at 12 donors and 0.043 vs 0.059 at 24. At 3 donors neither finds a changed gene (the t-test made one false call across the 10 replicates, the GLM none), because the per-sample variance swamps a 2× effect at three pairs whatever the test. So the normal approximation is expensive in the 3–8 donor range where most published designs live, and free above 12. **Every number here is simulated, not real**: the generator draws negative-binomial counts (the GLM's own model) and the dispersion-trend floor in `nbglm.py` was tuned on it, so this is the GLM's best case and not out-of-sample. Real counts are in §9 (`scripts/nbglm_real.py`, `results/nbglm_real_*.csv`); that measurement replaced the hedge that used to sit here ("on real data the gap is unlikely to be larger than this and could be smaller").
 
 ## Note on how this was built
 
-Written with Claude (Anthropic) as a coding assistant. I set the question,
-chose the validation strategy, and interpreted the results. The three
-findings I would defend in detail — that the per-cell failure is
-specifically caused by unmodelled sample-level variance, that composition
-bias grows in relative importance as a study gets larger, and that p-value
-ranking is close to arbitrary at these replicate counts — all came from
-following up results that did not match what was expected, instead of
-accepting output that looked reasonable.
+Written with Claude (Anthropic) as a coding assistant. I set the question, chose the validation strategy, and interpreted the results. The three findings I would defend in detail (the per-cell failure is caused specifically by unmodelled sample-level variance, composition bias grows in relative importance as a study gets larger, and p-value ranking is close to arbitrary at these replicate counts) all came from following up results that did not match what was expected, instead of accepting output that looked reasonable.
