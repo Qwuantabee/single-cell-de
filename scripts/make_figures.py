@@ -318,6 +318,82 @@ def fig_mixed_null():
           "source: results/mixed_null_donor_swap.csv, results/mixed_null_draws.csv")
 
 
+def fig_nbglm_null():
+    """The NB GLM makes false calls on a balanced null in some types; pseudobulk does not."""
+    df = _maybe("nbglm_real_null_balanced.csv", "scripts/nbglm_real.py")
+    if df is None:
+        return
+    bh = _maybe("bh_null_expectation.csv", "scripts/bh_null_expectation.py")
+    pb = df[df["method"] == "pseudobulk"].set_index("cell_type")
+    nb = df[df["method"] == "nb_glm"].set_index("cell_type").loc[pb.index]
+    ref = 0.05
+    # highlighted: types whose Wilson lower bound clears the reference
+    hot = [ct for ct in nb.index if nb.at[ct, "p_any_lo"] > ref]
+    hot.sort(key=lambda ct: -nb.at[ct, "p_any"])
+
+    def frac(tab, ct):
+        return f"{int(tab.at[ct, 'n_draws_with_any_fp'])}/{int(tab.at[ct, 'draws'])}"
+
+    fig, ax = plt.subplots(figsize=(6.5, 4))
+    x = np.arange(len(pb))
+    for ct in hot:
+        i = list(pb.index).index(ct)
+        ax.axvspan(i - 0.5, i + 0.5, color="C3", alpha=0.08, lw=0)
+    for off, tab, color, label in ((-0.2, pb, "C0", "pseudobulk paired t"),
+                                   (0.2, nb, "C3", "NB GLM")):
+        p = tab["p_any"].to_numpy()
+        lo = tab["p_any_lo"].to_numpy()
+        hi = tab["p_any_hi"].to_numpy()
+        ax.bar(x + off, p, width=0.4, label=label, color=color,
+               edgecolor="black", linewidth=0.5, yerr=[p - lo, hi - p],
+               capsize=2, error_kw={"lw": 0.8})
+        for xi, ct, h in zip(x + off, tab.index, hi):
+            bold = tab is nb and ct in hot
+            ax.text(xi, h + 0.02, frac(tab, ct), ha="center", va="bottom",
+                    fontsize=7.5 if bold else 6.5,
+                    fontweight="bold" if bold else "normal")
+    ax.axhline(ref, ls="--", lw=1, color="grey",
+               label=f"{ref:.2f}: reference for an exact null")
+    mean_lines = [f"{_short(ct)}: {nb.at[ct, 'mean_fp_small_effect']:.2f} "
+                  f"({nb.at[ct, 'fp_ci_lo']:.2f}-{nb.at[ct, 'fp_ci_hi']:.2f})"
+                  for ct in hot]
+    if mean_lines:
+        ax.text(0.01, 0.99, "NB GLM false calls per draw (95% CI)\n"
+                + "\n".join(mean_lines) + "\npseudobulk: "
+                + ", ".join(f"{pb.at[ct, 'mean_fp_small_effect']:.2f}" for ct in hot),
+                transform=ax.transAxes, va="top", fontsize=7)
+    ax.set_ylim(0, 1.62)
+    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{_tick(ct)}\n{int(d)} donors\n{int(n)} draws"
+                        for ct, d, n in zip(pb.index, pb["n_donors_used"],
+                                            pb["draws"])], fontsize=7.5)
+    parts = ", ".join(f"{frac(nb, ct)} {_short(ct)}" for ct in hot)
+    if all(pb.at[ct, "n_draws_with_any_fp"] == 0 for ct in hot):
+        pb_parts = "none"
+    else:
+        pb_parts = ", ".join(frac(pb, ct) for ct in hot)
+    ax.set(ylabel="share of balanced draws with at least\none false positive (BH q < 0.05)",
+           title="The NB GLM is anti-conservative on a balanced null:\n"
+                 f"false calls in {parts} draws; pseudobulk: {pb_parts}")
+    ax.title.set_fontsize(10)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    enumerated = bool((nb["n_distinct_draws"] == nb["n_plans_available"]).all())
+    by_type = " + ".join(str(int(v)) for v in nb["draws"])
+    ref_note = ""
+    if bh is not None:
+        ref_note = (f" The {ref:.2f} line is P(any rejection) for independent "
+                    f"exact nulls (simulated {bh['p_any'].iloc[0]:.4f}); it is not "
+                    "a bound for correlated genes.")
+    _save(fig, "nbglm_null_anticonservative.png",
+          f"n = {by_type} distinct balanced donor-swap draws "
+          f"({'every plan enumerated' if enumerated else 'sampled plans'}), "
+          "small-effect genes only (|log2FC| < 0.5, ISGs removed). Whiskers: "
+          "Wilson 95% CI. Shaded: Wilson lower bound above the reference."
+          + ref_note + "\n"
+          "source: results/nbglm_real_null_balanced.csv, results/bh_null_expectation.csv")
+
+
 FIGURES = {
     "null": fig_null,
     "power": fig_power,
@@ -326,6 +402,7 @@ FIGURES = {
     "real_null": fig_real_null,
     "isg": fig_isg_ranking,
     "mixed_null": fig_mixed_null,
+    "nbglm_null": fig_nbglm_null,
 }
 
 
