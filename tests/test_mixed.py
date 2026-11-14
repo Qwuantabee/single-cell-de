@@ -155,6 +155,31 @@ def test_mixed_pvalue_equals_paired_t_on_balanced_fixture():
         (stim - ctrl).mean(axis=0), abs=1e-9)
 
 
+def test_donors_argument_restricts_to_the_rows_a_paired_test_uses():
+    """The mixed arm must see the same samples as the paired test.
+
+    Without the whitelist the model also absorbs single-condition profiles
+    from unpaired donors, which is why the two arms disagreed on log2FC by
+    up to 0.75 on the thin types while agreeing to 1e-15 on the 8-donor
+    types.
+    """
+    rng = np.random.default_rng(0)
+    donors8 = [f"d{i}" for i in range(8)]
+    index = [f"{d}||{c}" for d in donors8 for c in ("ctrl", "stim")]
+    index += ["extra1||stim", "extra2||stim"]     # unpaired, stim only
+    val = rng.normal(5, 1, (len(index), 4))
+    frame = pd.DataFrame(val, index=index, columns=[f"g{i}" for i in range(4)])
+
+    whole = mixed.mixed_de(frame, "donor", "condition", "stim", "ctrl")
+    paired = mixed.mixed_de(frame, "donor", "condition", "stim", "ctrl",
+                            donors=donors8)
+    assert whole["n_a"].iloc[0] == 10
+    assert paired["n_a"].iloc[0] == 8
+    assert paired["df"].iloc[0] == 7
+    # the unpaired profiles move the estimate, which is the point
+    assert not np.allclose(whole["coef"], paired["coef"])
+
+
 def test_percell_agrees_with_profiles_when_cells_are_identical():
     """The per-cell fit is a different data path to the same estimand.
 

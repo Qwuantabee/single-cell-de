@@ -169,10 +169,10 @@ def mixed_de(logcpm, sample_key, condition_key, group_a, group_b,
     ).set_index("gene")
     out["qval"] = _bh(out["pval"].to_numpy())
     out["log2fc"] = out["coef"]
-    out["n_a"] = int(is_a.sum())
-    out["n_b"] = int(is_b.sum())
     out["df"] = df
     out["n_pairs"] = n_pairs
+    out["n_a"] = int((is_a & keep).sum())
+    out["n_b"] = int((is_b & keep).sum())
     return out
 
 
