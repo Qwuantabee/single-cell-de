@@ -1,0 +1,44 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # The Kang 2018 dataset is not committed (it is a third-party download and
+      # large), but this suite needs none of it: every test either simulates its
+      # input or reads a committed results/ artefact. Measured on a checkout
+      # with no data/ at all: 121 passed, 0 skipped. If this step ever needs a
+      # skip switch, a test has quietly become data-dependent.
+      - name: tests
+        run: python -m pytest tests/ -q
+
+      - name: figures regenerate from committed artefacts
+        run: |
+          python scripts/make_figures.py --all || python scripts/make_figures.py
+          git diff --exit-code --stat -- figures/ || {
+            echo "figures/ changed when regenerated from committed data.";
+            echo "Commit the regenerated PNGs, or the artefacts drifted.";
+            exit 1;
+          }
