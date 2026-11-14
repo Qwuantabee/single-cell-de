@@ -1,3 +1,3 @@
-method,mean_false_positives,genes_tested,perms,mean_fdp
-pseudobulk,0.2,500,10,0.0004
-mixed,8.7,500,10,0.0174
+method,mean_false_positives,genes_tested,perms,mean_fdp,permutation_preserved_donors
+pseudobulk,0.0,500,10,0.0,True
+mixed,3.8,500,10,0.0076,True
