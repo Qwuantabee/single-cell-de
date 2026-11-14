@@ -662,6 +662,151 @@ def fig_log2fc_agreement():
           "file at commit 1c0c940), results/nbglm_real_isg.csv")
 
 
+def _panel_letter(ax, letter):
+    ax.text(-0.02, 1.16, letter, transform=ax.transAxes, fontsize=12,
+            fontweight="bold", va="bottom", ha="right")
+
+
+def fig_at_a_glance():
+    """Four panels that summarise the repository."""
+    sim = _maybe("sim_null.csv", "scripts/simulation_study.py")
+    real = _maybe("false_positives.csv", "scripts/false_positive_test.py")
+    power = _maybe("sim_power.csv", "scripts/simulation_study.py")
+    summ = _maybe("mixed_vs_others_summary.csv", "scripts/mixed_vs_others.py")
+    draws = _maybe("mixed_null_draws.csv", "scripts/mixed_vs_others.py")
+    nbnull = _maybe("nbglm_real_null_balanced.csv", "scripts/nbglm_real.py")
+    nbsum = _maybe("nbglm_real_summary.csv", "scripts/nbglm_real.py")
+    if any(t is None for t in (sim, real, power, summ, draws, nbnull, nbsum)):
+        return
+    fig, axes = plt.subplots(2, 2, figsize=(9, 7.4))
+
+    # A: false positives on null data, simulated and real
+    ax = axes[0, 0]
+    sim_pc = 100 * sim["per_cell"] / sim["n_genes"]
+    sim_pb = 100 * sim["pseudobulk"] / sim["n_genes"]
+    real_pc = 100 * real["per_cell"] / real["n_genes_sc"]
+    real_pb = 100 * real["pseudobulk"] / real["n_genes_pb"]
+    groups = [(f"simulated\n{int(sim['n_genes'].iloc[0])} genes,\n{len(sim)} replicates",
+               sim_pc, sim_pb),
+              (f"real Kang CD14+ Mono\n{int(real['n_genes_sc'].iloc[0]):,} genes,\n"
+               f"{len(real)} donor splits", real_pc, real_pb)]
+    x = np.arange(len(groups))
+    for off, k, color, label in ((-0.2, 1, "C3", "per-cell Wilcoxon"),
+                                 (0.2, 2, "C0", "pseudobulk paired t")):
+        vals = [g[k] for g in groups]
+        mean = np.array([v.mean() for v in vals])
+        lo = np.array([v.min() for v in vals])
+        hi = np.array([v.max() for v in vals])
+        ax.bar(x + off, mean, width=0.4, color=color, edgecolor="black",
+               linewidth=0.5, label=label, yerr=[mean - lo, hi - mean],
+               capsize=2, error_kw={"lw": 0.8})
+        for xi, m, h in zip(x + off, mean, hi):
+            ax.text(xi, h + 1.5, f"{m:.1f}%", ha="center", va="bottom", fontsize=8)
+    ax.set_xticks(x)
+    ax.set_xticklabels([g[0] for g in groups], fontsize=8)
+    ax.set_ylim(0, 100)
+    ax.set(ylabel="genes called significant\n(% of genes tested, BH q < 0.05)",
+           title=f"Null data: per-cell testing calls {sim_pc.mean():.0f}% (simulated)\n"
+                 f"and {real_pc.mean():.0f}% (real) of genes; pseudobulk "
+                 f"{max(sim_pb.mean(), real_pb.mean()):.1f}%")
+    ax.title.set_fontsize(9.5)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    _panel_letter(ax, "A")
+
+    # B: power and false discovery proportion
+    ax = axes[0, 1]
+    agg = power.groupby("method")[["power", "fdp"]].mean()
+    order = ["per_cell", "pseudobulk"]
+    names = {"per_cell": "per-cell\nWilcoxon", "pseudobulk": "pseudobulk\npaired t"}
+    cols = {"per_cell": "C3", "pseudobulk": "C0"}
+    for xi, m in enumerate(order):
+        ax.bar(xi, agg.at[m, "fdp"], width=0.5, color=cols[m], edgecolor="black",
+               linewidth=0.5)
+        ax.text(xi, agg.at[m, "fdp"] + 0.02, f"{agg.at[m, 'fdp']:.2f}", ha="center",
+                va="bottom", fontsize=9, fontweight="bold")
+    ax.axhline(0.05, ls="--", lw=1, color="grey", label="nominal 5%")
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels([f"{names[m]}\npower {agg.at[m, 'power']:.2f}" for m in order],
+                       fontsize=8)
+    ax.set_ylim(0, 1.05)
+    ax.set(ylabel="observed false discovery proportion",
+           title=f"Same power ({agg.at['per_cell', 'power']:.2f} vs "
+                 f"{agg.at['pseudobulk', 'power']:.2f}), but per-cell hit lists are\n"
+                 f"{agg.at['per_cell', 'fdp']:.0%} false against "
+                 f"{agg.at['pseudobulk', 'fdp']:.0%} for pseudobulk")
+    ax.title.set_fontsize(9.5)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    _panel_letter(ax, "B")
+
+    # C: mixed model vs pseudobulk
+    ax = axes[1, 0]
+    ratio = summ["mixed_sig"] / summ["pseudobulk_sig"]
+    x = np.arange(len(summ))
+    ax.bar(x, ratio, width=0.6, color="C1", edgecolor="black", linewidth=0.5,
+           label="mixed (1 | donor)")
+    for xi, v in zip(x, ratio):
+        ax.text(xi, v + 0.02, f"{v:.2f}x", ha="center", va="bottom", fontsize=8)
+    ax.axhline(1, ls="--", lw=1, color="grey", label="same calls as pseudobulk")
+    ax.set_xticks(x)
+    ax.set_xticklabels([_short(t) for t in summ["cell_type"]], rotation=35,
+                       ha="right", fontsize=8)
+    ax.set_ylim(0, 1.45)
+    bd = draws[draws["balance"] == "balanced"]
+    same = int((bd["fp_pseudobulk"] == bd["fp_mixed"]).sum())
+    share = summ["mixed_only_calls_boundary"].sum() / summ["mixed_only_calls"].sum()
+    ax.set(ylabel="genes called, mixed / pseudobulk\n(BH q < 0.05, real data)",
+           title=f"Mixed model: {ratio.min():.2f}-{ratio.max():.2f}x pseudobulk's calls, "
+                 f"{share:.0%} of the extras\non boundary fits; same null false-positive "
+                 f"count in {same}/{len(bd)} draws")
+    ax.title.set_fontsize(9.5)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    _panel_letter(ax, "C")
+
+    # D: NB GLM calls more genes and is anti-conservative on two types
+    ax = axes[1, 1]
+    pb = nbnull[nbnull["method"] == "pseudobulk"].set_index("cell_type")
+    nb = nbnull[nbnull["method"] == "nb_glm"].set_index("cell_type").loc[pb.index]
+    x = np.arange(len(pb))
+    for off, tab, color, label in ((-0.2, pb, "C0", "pseudobulk paired t"),
+                                   (0.2, nb, "C3", "NB GLM")):
+        p = tab["p_any"].to_numpy()
+        lo = tab["p_any_lo"].to_numpy()
+        hi = tab["p_any_hi"].to_numpy()
+        ax.bar(x + off, p, width=0.4, color=color, edgecolor="black", linewidth=0.5,
+               label=label, yerr=[p - lo, hi - p], capsize=2, error_kw={"lw": 0.8})
+    hot = [ct for ct in nb.index if nb.at[ct, "p_any_lo"] > 0.05]
+    hot.sort(key=lambda ct: -nb.at[ct, "p_any"])
+    for ct in hot:
+        i = list(pb.index).index(ct)
+        ax.text(i + 0.2, nb.at[ct, "p_any_hi"] + 0.03,
+                f"{int(nb.at[ct, 'n_draws_with_any_fp'])}/{int(nb.at[ct, 'draws'])}",
+                ha="center", va="bottom", fontsize=8, fontweight="bold")
+    ax.axhline(0.05, ls="--", lw=1, color="grey", label="0.05 reference")
+    ax.set_xticks(x)
+    ax.set_xticklabels([_short(t) for t in pb.index], rotation=35, ha="right",
+                       fontsize=8)
+    ax.set_ylim(0, 1.3)
+    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+    more = 100 * (nbsum["n_nb"] / nbsum["n_pb"] - 1)
+    ax.set(ylabel="share of balanced null draws\nwith >= 1 false positive",
+           title=f"NB GLM: {more.min():.0f}-{more.max():.0f}% more genes called, but false calls\n"
+                 "on a balanced null in " + " and ".join(_short(ct) for ct in hot)
+                 + ",\nwhere pseudobulk makes none")
+    ax.title.set_fontsize(9.5)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    _panel_letter(ax, "D")
+
+    _save(fig, "at_a_glance.png",
+          f"A: n = {len(sim)} simulated replicates and {len(real)} donor splits; bars: "
+          "mean, whiskers: min-max. B: n = "
+          f"{power['rep'].nunique()} replicates per method. C: n = {len(summ)} cell "
+          "types. D: balanced donor-swap draws (35/35/35/70/15/15/15 by type), whiskers: "
+          "Wilson 95% CI; the 0.05 line is the exact-null reference, not a bound.\n"
+          "source: results/sim_null.csv, false_positives.csv, sim_power.csv, "
+          "mixed_vs_others_summary.csv, mixed_null_draws.csv, "
+          "nbglm_real_null_balanced.csv, nbglm_real_summary.csv")
+
+
 FIGURES = {
     "null": fig_null,
     "power": fig_power,
@@ -674,6 +819,7 @@ FIGURES = {
     "boundary": fig_boundary,
     "plan_space": fig_plan_space,
     "log2fc": fig_log2fc_agreement,
+    "glance": fig_at_a_glance,
 }
 
 
