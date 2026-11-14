@@ -278,107 +278,159 @@ significant in all 7 testable cell types — but its *size* is cell-type
 specific: 2,952 genes in CD14+ monocytes against 88 in CD8 T cells. A single
 pooled number (3,211) describes neither.
 
-## 8. Mixed-effects models: the middle ground
+## 8. Mixed-effects models: the middle ground, measured on all seven cell types
 
 Pseudobulk is right about the degrees of freedom and wasteful about the
 cells. A mixed model keeps both: `expression ~ condition + (1 | donor)`
 estimates the condition effect from the within-donor contrast while treating
 donor as a variance component rather than a replicate.
 
-On the CD4 T cell subset (11,238 cells, 7,048 genes, 8 donors):
+**This section was wrong for as long as it was CD4-only.** The first version
+ran the comparison on the CD4 T cell subset and then wrote the conclusion as a
+statement about mixed models. One subset of eleven thousand cells is not a
+property of a method, and the six other testable types had never been run.
+`scripts/mixed_vs_others.py` now loops over all seven. Megakaryocytes remain
+excluded for the reason in §7: 132 cells, and they do not supply a donor
+panel after the min-cells filter.
 
-| method | genes called at FDR 5% | wall clock | Jaccard vs mixed |
-|---|---|---|---|
-| per-cell Wilcoxon | 2,112 | 6.0 s | 0.649 |
-| pseudobulk paired t | 986 | 0.6 s | 0.526 |
-| mixed (1 \| donor) | 1,875 | 104.6 s | — |
+Per type — cells, the number of donors that contribute one profile to each
+condition, and the calls at BH q < 0.05:
 
-The fold changes from the two donor-aware methods are identical: Pearson r =
-1.000 and Spearman ρ = 1.000 on log₂FC. The mixed model is not estimating a
-different effect, it is estimating the same effect with more data per donor
-hence tighter standard errors, which is why it calls 1,875 where pseudobulk
-calls 986. All 12 ISGs are significant under all three, at median ranks 97,
-74 and 76 respectively.
+| cell type | cells | paired donors | genes | per-cell Wilcoxon | pseudobulk paired t | mixed (1 \| donor) | mixed / pb | log₂FC r | mixed wall clock |
+|---|---|---|---|---|---|---|---|---|---|
+| CD4 T cells | 11,238 | 8 | 7,048 | 2,112 | 986 | 1,875 | 1.90× | 1.000 | 121.2 s |
+| CD14+ Monocytes | 5,697 | 8 | 5,364 | 3,836 | 2,952 | 3,514 | 1.19× | 1.000 | 91.6 s |
+| B cells | 2,651 | 8 | 3,804 | 979 | 563 | 1,011 | 1.80× | 1.000 | 69.9 s |
+| NK cells | 1,716 | 7 | 2,436 | 581 | 401 | 785 | 1.96× | 1.000 | 42.7 s |
+| CD8 T cells | 1,621 | 5 | 2,081 | 366 | 90 | 428 | 4.76× | 0.990 | 34.0 s |
+| FCGR3A+ Monocytes | 1,089 | 5 | 2,683 | 1,322 | 771 | 1,427 | 1.85× | 0.994 | 45.8 s |
+| Dendritic cells | 529 | 5 | 2,084 | 901 | 562 | 1,092 | 1.94× | 0.998 | 25.0 s |
 
-Two honest problems, both measured:
+Five things replicate across all seven, and they are the five the CD4-only
+version claimed:
 
-**The donor-swap null.** Permuting which of a donor's two aliquots is called
-"stim" makes the true answer "nothing" while leaving the donor structure
-intact — the permutation moves labels, never cells, and
-`tests/test_permutation.py` pins that property (`scripts/mixed_vs_others.py`
-also re-checks it on every permutation before using it, and records
-`permutation_preserved_donors` in the CSV). 10 permutations, 500 genes each:
+* the fold changes agree — Pearson r between the two donor-aware methods is
+  0.990 to 1.000 on every type, so the mixed model is estimating the same
+  effect, not a different one;
+* the mixed model calls more genes than pseudobulk on every type, by between
+  1.19× (CD14+ monocytes, where there is the least left to find) and 4.76×
+  (CD8 T cells, where the paired t is working with five pairs);
+* the extra calls are not simply per-cell noise: 44–70% of them are also
+  significant under the per-cell Wilcoxon, so they are loci with some signal
+  rather than pure chatter, but a call the per-cell test also makes is not
+  automatically a true one, since the per-cell test is the one §1 shows is
+  broken;
+* convergence is not a problem anywhere — 98.8% to 100% of fits converge
+  under Powell, worst on the two types with five pairs and few cells;
+* all 12 ISGs are significant under all three methods on all seven types.
 
-| method | false positives per 500 genes | FDP |
-|---|---|---|
-| pseudobulk | 0.0 | 0.000 |
-| mixed | 3.8 | 0.008 |
+The cost is also consistent: 12.0 to 18.4 ms per gene for pseudobulk-profile
+fits. Against the vectorised paired t-test on the same genes that is 152× to
+458× on the six types whose pseudobulk fit took at least 0.1 s; the Dendritic
+pseudobulk fit rounds to under 0.05 s, so its ratio is at least 500× rather
+than measurable at this timing resolution.
+Per-cell fits (a donor-stratified subsample of at most 3,200 cells, 400
+genes) run 13.4–20.9 ms per gene and converge 99.8–100% of the time, so the
+"cells instead of profiles" version buys nothing that the profile version
+does not already have at this cell count.
 
-Read these against the right reference, and the reference is easy to get
-wrong. Both arms call significance on **Benjamini-Hochberg q < 0.05 over the
-500 genes**, not on raw p < 0.05. Under a complete null with m = 500, BH at
-q = 0.05 rejects a mean of about **0.05 genes**, not 25: BH bounds the
-*proportion* of false discoveries among rejections at 5%, so a calibrated
-procedure on all-null data correctly returns essentially nothing. A
-simulation over 5,000 draws gives 0.055 mean rejections and P(any) = 0.049.
+### The donor-swap null, and the two ways to get it wrong
 
-Against *that* reference the two methods read differently from how they first
-appear:
+Permuting which of a donor's two aliquots is called "stim" makes the true
+answer "nothing" while leaving the donor structure intact — the permutation
+moves labels, never cells, and `tests/test_permutation.py` pins that
+property. The script re-checks it on every draw and raises if it fails.
 
-* **pseudobulk at 0.0/500 is exactly at the expectation** for a
-  BH-corrected test on all-null data. It is not over-conservative; it is
-  calibrated.
-* **The mixed model at 3.8/500 is roughly 70× above the expectation.** On
-  this null it is anti-conservative — it calls false positives that BH at
-  this gene count should almost never produce. Its FDP of 0.008 stays under
-  the nominal 0.05, which is why it is not broken in the usual sense, but the
-  comparison is no longer "two degrees of conservatism": one method is
-  calibrated and the other is not, on this particular null.
+Two corrections had to be made to the null itself before it meant anything.
 
-An earlier version of this section compared both against 25/500 (5% × 500),
-which is the expectation for an *uncorrected* p < 0.05 threshold, not for BH.
-That reference made pseudobulk look pathologically conservative and the mixed
-model look nearly calibrated — the opposite of what the same numbers mean
-under the correction the code actually applies. The per-cell Wilcoxon's
-365/500 remains liberal by either reading.
+**The reference.** Significance is called on Benjamini-Hochberg q < 0.05 over
+the 500 genes, not on raw p < 0.05. Under a complete null with m = 500,
+BH at q = 0.05 rejects a mean of about **0.05 genes**, not 25: BH bounds the
+proportion of false discoveries among *rejections*, so a calibrated procedure
+on all-null data returns essentially nothing. A simulation over 5,000 draws
+gives 0.055 mean rejections and P(any) = 0.049. Every ratio below is against
+that reference.
 
-That conservatism is the paired t-test being exact rather than approximate:
-with 8 pairs and this much within-pair noise there is little to gain, and it
-is the honest cost of a design with few donors. The mixed model is looser
-than the paired t-test on this null by roughly a factor of the ratio above,
-and the reason is in the variance component: median donor variance 0.021, and
-2,444 of 7,048 genes (35%) at or below 1e-6. With two samples per donor the
-random intercept is estimated from one pair, so it sits on the boundary and
-the standard error on the condition effect is then estimated from an
-almost-pooled model — less conservative than the exact paired t-test without
-ever becoming liberal.
+**The draws.** Flipping each donor with a 0.5 coin gives a Binomial(n, 1/2)
+number of flips, so a draw can leave most donors carrying their real
+condition effect; the paired contrast then does not average to zero and a
+method that correctly finds the *real* effect is scored as a false positive.
+A balanced draw flips exactly half the paired donors, so the flipped and
+unflipped halves cancel and the truth really is "nothing"
+(`permutation.balanced_swap_plan`). With an odd number of paired donors one
+donor is held out per draw, because k = n/2 is not an integer and rounding
+leaves one donor carrying its effect every time. 10 balanced draws, 500
+genes, per type:
 
-One caveat on these numbers, stated because they moved: an earlier version of
-this script drew the swaps from the same RNG stream that had already been used
-to pick the 500 null genes, and reported 0.2 and 8.7. The current numbers come
-from `scpipe.permutation`, which makes the donor-level swap explicit and draws
-its own stream, and the same property is verified on every permutation
-(`permutation_preserved_donors: True` in
-`results/mixed_null_donor_swap.csv`). Both versions of the run put pseudobulk
-far below 25 and mixed below 25, so the conclusion is unchanged; the exact
-false-positive counts on a 10-permutation null with 500 genes are noisy in the
-first place.
+| cell type | paired donors | pseudobulk FP/500 | mixed FP/500 | mixed observed/expected | *unbalanced* pb / mx |
+|---|---|---|---|---|---|
+| CD4 T cells | 8 | 0.0 | 0.8 | 16× | 0.1 / 5.1 |
+| CD14+ Monocytes | 8 | 0.0 | 0.6 | 12× | 0.0 / 6.4 |
+| B cells | 8 | 0.0 | 1.4 | 28× | 0.1 / 5.2 |
+| NK cells | 7 | 0.0 | 3.3 | 66× | 0.0 / 9.4 |
+| CD8 T cells | 5 | 0.0 | 13.6 | 272× | 2.2 / 16.7 |
+| FCGR3A+ Monocytes | 5 | 0.0 | 8.6 | 172× | 14.7 / 44.6 |
+| Dendritic cells | 5 | 0.0 | 8.6 | 172× | 12.6 / 36.2 |
 
-**The cost.** One model per gene is 174× the paired t-test (104.6 s vs 0.6 s
-for 7,048 genes; 14.8 ms/gene). Per-cell rather than per-profile fits are
-worse still: on a donor-stratified subsample of 3,179 cells (28% of the
-subset) and 400 genes, 8.2 s = 20.5 ms/gene, projecting to 143.7 s for the
-full gene set at that cell count, and the per-cell fold changes only
-correlate r = 0.620 with the pseudobulk versions because the subsample throws
-away cells. 100% of fits converged under Powell; the statsmodels default
-L-BFGS solver raised `LinAlgError: Singular matrix` on roughly two thirds of
-*gene* fits when this was first written, which is why the default here is
-Powell.
+(The right-hand column is recorded for contrast, not as a null: those draws
+retain the real effect in the unflipped donors, which is why the numbers are
+larger and why they are not the numbers to judge a method by.)
 
-The verdict: the mixed model is the right tool when cells are the only
-replication available (one sample per donor, many cells). When a paired
-design exists with few donors, the paired t-test on pseudobulk costs 0.6 s,
-has a tighter null, and estimates the same effect size to three decimals.
+Two patterns are stable: **pseudobulk is exactly at the expectation on all
+seven types** (0.0/500 every time — calibrated, not over-conservative), and
+**the mixed model is above the expectation on all seven**, by 12× at best and
+272× at worst.
+
+The magnitude is not uniform, and it is monotone in the donor count: 12–28×
+with eight paired donors, 172–272× with five (r = −0.96 between paired donors
+and the log ratio across the seven types — an association on a sample of
+seven, not a controlled experiment). CD4 is therefore the *most* favourable
+case for the mixed model, not a typical one, so the old CD4-only section
+understated the problem rather than overstating it. The plausible mechanism
+is that the paired t-test is exact at any n while the mixed model's Wald
+standard error is asymptotic and its random intercept is estimated from very
+few pairs (median donor variance 0.014–0.037, 32–44% of genes at the 1e-6
+boundary); that reading is not separately tested here, and the measured
+pattern is what should be relied on.
+
+What that does and does not mean for the extra calls: on CD8 T cells the
+mixed model's null inflation is 13.6/500 = 2.7% per gene, which scaled to
+2,081 genes is roughly 57 expected false positives — against 338 extra calls
+over pseudobulk. So the null inflation does not account for all of the
+difference, but it does mean the mixed model's additional calls carry an
+error rate that pseudobulk's 0.0/500 does not. Both statements are measured;
+neither one licenses calling the extra genes real.
+
+An earlier version of this section compared both arms against 25/500
+(5% × 500), the expectation for an *uncorrected* p < 0.05 threshold, which
+made pseudobulk look pathologically conservative and the mixed model nearly
+calibrated — the opposite of what the same numbers mean under the correction
+the code actually applies. The per-cell Wilcoxon's ~73% false-positive rate on
+the simulated null is liberal by either reading.
+
+### The verdict, and how far it holds
+
+The CD4 conclusion was: **the paired t-test on pseudobulk is the right default
+when a paired design exists; the mixed model suits the many-cells-one-sample
+case.** Across all seven testable types that holds in direction — pseudobulk
+is calibrated on every type, the two agree on effect size to Pearson r ≥ 0.990
+on every type, and the mixed model is anti-conservative on every type and
+152–458× more expensive (at least 500× on the smallest type).
+
+What does *not* generalise is the size of the gap. The CD4 run put the mixed
+model at 0.8/500 false positives; five of the seven types are worse than that
+and the two worst are 17× worse. Stated as a rule: the fewer paired donors a
+type has, the worse the mixed model's null behaves relative to the exact
+paired test, so the case for pseudobulk gets *stronger* as a study gets
+smaller, not weaker. No type reverses the direction of the verdict.
+
+One caveat, stated because it is a real cost of the conclusion: pseudobulk's
+calibration is bought with power on the thin types. On CD8 T cells it calls 90
+genes where the mixed model calls 428, and the balanced null cannot tell us
+how many of those 338 are real — only that the mixed model's list carries
+roughly 57 expected false calls that pseudobulk's does not. The honest
+statement is that pseudobulk is the better-calibrated default, not that every
+gene the mixed model found beyond it is wrong.
 
 ## 9. The NB GLM on real data: what the simulator could not say
 
@@ -490,11 +542,12 @@ scripts/
     real_analysis.py        ctrl vs stim per cell type, the positive control
     nbglm_study.py          the GLM vs the t-test, simulated (power, FDP)
     nbglm_real.py           the GLM vs the t-test, real Kang counts (§9)
-    mixed_vs_others.py      the mixed-model comparison of §8
+    mixed_vs_others.py      the mixed-model comparison of §8, all 7 cell types
     make_figures.py
-tests/              73 tests, including calibration tests that assert the
+tests/              86 tests, including calibration tests that assert the
                     per-cell test fails and that it stops failing when
-                    sample-level variance is removed
+                    sample-level variance is removed, and driver tests that
+                    pin the seven-type roster and the balanced null
 ```
 
 ## Setup
@@ -505,6 +558,7 @@ pytest
 python scripts/simulation_study.py
 python scripts/false_positive_test.py --cell-type "CD14+ Monocytes"
 python scripts/real_analysis.py
+python scripts/mixed_vs_others.py       # --types "CD4 T cells" for one
 python scripts/make_figures.py
 ```
 
