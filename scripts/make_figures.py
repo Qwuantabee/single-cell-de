@@ -394,6 +394,105 @@ def fig_nbglm_null():
           "source: results/nbglm_real_null_balanced.csv, results/bh_null_expectation.csv")
 
 
+def _model_slug(cell_type):
+    """File stem used by scripts/mixed_vs_others.py ('CD14+ Monocytes' -> 'CD14_Monocytes')."""
+    return (cell_type.replace("+", "").replace(" ", "_")
+            .replace("-", "_").replace("__", "_"))
+
+
+def fig_boundary():
+    """Boundary fits carry most of the mixed model's extra calls."""
+    summ = _maybe("mixed_vs_others_summary.csv", "scripts/mixed_vs_others.py")
+    if summ is None:
+        return
+    parts, rows = [], []
+    for _, s in summ.iterrows():
+        path = RESULTS / "mixed_per_type" / f"{_model_slug(s['cell_type'])}_models.csv"
+        if not path.exists():
+            print(f"  (skipping: {path.name} is missing; run scripts/mixed_vs_others.py)")
+            return
+        m = pd.read_csv(path, index_col=0)
+        extra = (m["mx_qval"] < 0.05) & ~(m["pb_qval"] < 0.05)
+        row = {"cell_type": s["cell_type"], "genes": len(m),
+               "boundary": int(m["mx_boundary"].sum()),
+               "extra": int(extra.sum()),
+               "extra_boundary": int((extra & m["mx_boundary"]).sum()),
+               "pb_only": int(((m["pb_qval"] < 0.05) & ~(m["mx_qval"] < 0.05)).sum())}
+        # the per-gene files and the summary must tell the same story
+        if (row["extra"], row["extra_boundary"], row["pb_only"]) != (
+                int(s["mixed_only_calls"]), int(s["mixed_only_calls_boundary"]),
+                int(s["pseudobulk_only_calls"])):
+            raise ValueError(f"{s['cell_type']}: models csv and summary disagree on "
+                             "mixed-only calls")
+        rows.append(row)
+        m = m.assign(extra=extra)
+        parts.append(m[["paired_t_stat", "mx_stat", "mx_boundary", "extra"]])
+    tab = pd.DataFrame(rows).set_index("cell_type")
+    allg = pd.concat(parts)
+    tt = allg["paired_t_stat"].abs().clip(lower=1e-3)
+    zz = allg["mx_stat"].abs().clip(lower=1e-3)
+    bnd = allg["mx_boundary"].to_numpy()
+    ratio = zz / tt
+    r_bnd, r_int = ratio[bnd].max(), ratio[~bnd].max()
+    n_extra, n_extra_b = int(tab["extra"].sum()), int(tab["extra_boundary"].sum())
+    share_extra = n_extra_b / n_extra
+    share_genes = tab["boundary"].sum() / tab["genes"].sum()
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.3),
+                             gridspec_kw={"width_ratios": [1.15, 1]})
+    ax = axes[0]
+    ax.scatter(tt[~bnd], ratio[~bnd], s=3, color="C0", alpha=0.35, lw=0,
+               rasterized=True, label=f"interior: donor variance estimated "
+                                      f"(n = {int((~bnd).sum()):,})")
+    ax.scatter(tt[bnd], ratio[bnd], s=3, color="C3", alpha=0.35, lw=0,
+               rasterized=True, label=f"boundary: donor variance at 0 "
+                                      f"(n = {int(bnd.sum()):,})")
+    ex = allg["extra"].to_numpy()
+    ax.scatter(tt[ex], ratio[ex], s=14, facecolors="none", edgecolors="black",
+               linewidths=0.6, label=f"mixed-only call (n = {int(ex.sum())})")
+    ax.axhline(1, ls="--", lw=1, color="grey", label="mixed = paired t")
+    ax.set(xscale="log", xlim=(tt.min() * 0.8, tt.max() * 1.25),
+           ylim=(0.97, r_bnd * 1.1),
+           xlabel="pseudobulk paired t statistic (|t|, log scale)",
+           ylabel="mixed Wald statistic / paired t",
+           title="Boundary fits lift the mixed statistic up to "
+                 f"{r_bnd:.2f}x above the paired t;\n"
+                 f"interior fits agree within {100 * (r_int - 1):.2f}%")
+    ax.title.set_fontsize(10)
+    ax.legend(fontsize=7.5, loc="upper left", markerscale=2.5, frameon=True,
+              framealpha=0.9, edgecolor="none")
+
+    ax = axes[1]
+    x = np.arange(len(tab))
+    interior = tab["extra"] - tab["extra_boundary"]
+    ax.bar(x, tab["extra_boundary"], width=0.6, color="C3", edgecolor="black",
+           linewidth=0.5, label="boundary fit")
+    ax.bar(x, interior, width=0.6, bottom=tab["extra_boundary"], color="C0",
+           edgecolor="black", linewidth=0.5, label="interior fit")
+    for xi, b, e in zip(x, tab["extra_boundary"], tab["extra"]):
+        ax.text(xi, e + 2, f"{b}/{e}", ha="center", va="bottom", fontsize=7.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels([_short(ct) for ct in tab.index], rotation=35,
+                       ha="right", fontsize=8)
+    ax.set_ylim(0, tab["extra"].max() * 1.18)
+    ax.set(ylabel="genes called by mixed but not pseudobulk\n(BH q < 0.05)",
+           title=f"{share_extra:.0%} of mixed-only calls ({n_extra_b} of "
+                 f"{n_extra}) are boundary fits;\nboundary genes are "
+                 f"{share_genes:.0%} of all genes tested")
+    ax.title.set_fontsize(10)
+    ax.text(0.98, 0.6, f"pseudobulk-only calls: {int(tab['pb_only'].sum())}",
+            transform=ax.transAxes, ha="right", fontsize=8)
+    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    _save(fig, "mixed_boundary_genes.png",
+          f"n = {int(tab['genes'].sum()):,} gene fits over {len(tab)} cell types "
+          f"(left); {n_extra} mixed-only calls (right: boundary/total per type). "
+          "Both panels pool every tested gene. "
+          "Boundary = fitted donor variance at 0. Mixed-only = BH q < 0.05 under "
+          "the mixed model and not under the paired t.\n"
+          "source: results/mixed_per_type/*_models.csv, "
+          "results/mixed_vs_others_summary.csv")
+
+
 FIGURES = {
     "null": fig_null,
     "power": fig_power,
@@ -403,6 +502,7 @@ FIGURES = {
     "isg": fig_isg_ranking,
     "mixed_null": fig_mixed_null,
     "nbglm_null": fig_nbglm_null,
+    "boundary": fig_boundary,
 }
 
 
