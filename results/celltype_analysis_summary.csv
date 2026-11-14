@@ -1,2 +1,2 @@
 n_cells,n_cell_types_tested,max_composition_shift_log2,pooled_sig,stratified_union_sig,stratified_union_sig_global_bh,pooled_only_sig,stratified_only_sig,pooled_sig_marker_share,pooled_finds_isgs,stratified_finds_isgs_anywhere,elapsed_s
-24673,7,0.30313600126496804,3211,3512,3363,763,1064,,12,7,5.6
+24673,7,0.30313600126496804,3211,3512,3363,763,1064,0.005242463958060288,12,7,5.7
