@@ -718,17 +718,25 @@ def fig_log2fc_agreement():
         ax.plot(x, b_diff, "o", color="C3", mec="black", mew=0.5,
                 label="before: GLM on total-count CPM, pseudobulk on size factors")
         for xi, v in zip(x, b_diff):
+            # Opaque (not alpha 0.85) and above the stems: the grey before/after
+            # connectors are drawn at zorder 0 but a translucent mask still let
+            # them show through the digits.
             ax.text(xi, v * 1.6, f"{v:.2f}", ha="center", va="bottom", fontsize=7,
-                    bbox=dict(facecolor="white", edgecolor="none", pad=0.6, alpha=0.85))
+                    bbox=dict(facecolor="white", edgecolor="none", pad=0.9),
+                    zorder=6)
     ax.plot(x, shown, "o", color="C0", mec="black", mew=0.5,
             label="now: both on median-of-ratios size factors")
     for xi, v, s in zip(x, a_diff, shown):
         ax.text(xi, s * 1.6, "0 (exact)" if v == 0 else f"{v:.0e}", ha="center",
-                va="bottom", fontsize=7, bbox=dict(facecolor="white", edgecolor="none", pad=0.6, alpha=0.85))
+                va="bottom", fontsize=7,
+                bbox=dict(facecolor="white", edgecolor="none", pad=0.9), zorder=6)
     ax.set_yscale("log")
     # Bottom at floor/4, not floor: the exact-zero marker is drawn at 2*floor and
     # its label sat on the axis spine, clipped by the frame.
-    ax.set_ylim(floor / 4, 12)
+    # Top set from the data, not a constant: the highest red label sits at
+    # max(b_diff)*1.6, so a fixed limit of 12 left "0.45" pressed against the frame
+    # when the largest before-fix difference was small.
+    ax.set_ylim(floor / 4, max(float(b_diff.max()) * 3.0, 5.0))
     ax.set_xlim(-0.6, len(types) - 0.4)
     ax.set_xticks(x)
     ax.set_xticklabels([_tick(t) for t in types], fontsize=7.5)
@@ -783,7 +791,10 @@ def fig_log2fc_agreement():
         xi = types.index(ct)
         ax.annotate(f"{g} ({_short(ct)}):\npseudobulk q {q_pb:.0e}, GLM q = {q_nb:.0f}",
                     xy=(xi, after.set_index("cell_type").at[ct, "glm_separated"]),
-                    xytext=(xi + 0.4, max(sep) * 0.95), fontsize=7.5, ha="left",
+                    # Higher and masked: the leader line used to terminate on the
+                    # bar's own "2" value label, which then read as struck through.
+                    xytext=(xi + 0.4, max(sep) * 1.18), fontsize=7.5, ha="left",
+                    bbox=dict(facecolor="white", edgecolor="none", pad=0.8), zorder=6,
                     arrowprops={"arrowstyle": "-", "color": "grey", "lw": 0.8})
     pr = ("Pearson r between the two log2FC columns: "
           + (f"{before['pearson'].min():.3f}-{before['pearson'].max():.3f} before, "
