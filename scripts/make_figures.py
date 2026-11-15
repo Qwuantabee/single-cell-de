@@ -856,6 +856,7 @@ def fig_nbglm_sim():
         ax.set_xlabel("donors (paired design)")
         ax.set_ylabel(ylabel)
     g6 = s[s["donors"] == 6].set_index("method")
+    g12 = s[s["donors"] == 12].set_index("method")
     for off, m in ((-0.06, "nb_glm"), (0.06, "paired_t_logcpm")):
         axes[0].annotate(f"{g6.at[m, 'power_mean']:.0%}",
                          (list(donors).index(6) + off, g6.at[m, "power_mean"]),
@@ -869,9 +870,10 @@ def fig_nbglm_sim():
     axes[0].legend(frameon=False, fontsize=8, loc="lower right")
     axes[1].axhline(0.05, ls="--", lw=1, color="grey", label="nominal 5%")
     axes[1].set_ylim(-0.005, 0.14)
-    axes[1].set_title("At the same observed false discovery proportion\n"
+    axes[1].set_title("False discovery proportion: the GLM is lower at 6 donors\n"
                       f"({g6.at['nb_glm', 'fdp_mean']:.3f} vs "
-                      f"{g6.at['paired_t_logcpm', 'fdp_mean']:.3f} at 6 donors)", fontsize=10)
+                      f"{g6.at['paired_t_logcpm', 'fdp_mean']:.3f}) but exceeds 5% at 12 "
+                      f"({g12.at['nb_glm', 'fdp_mean']:.3f})", fontsize=10)
     axes[1].legend(frameon=False, fontsize=8, loc="upper right")
     _save(fig, "nbglm_sim_power.png",
           f"n = {reps} simulated replicates per method and donor count (mean; power "
