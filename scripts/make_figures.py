@@ -134,8 +134,15 @@ def fig_null():
     ax.title.set_fontsize(10)
     ax.set_xticks(x)
     ax.set_xticklabels(df["rep"] + 1)
+    # Every pseudobulk bar is exactly 0, so the ten "0" labels are all at the same
+    # height - and the dotted UNCORRECTED-5% line runs at 25, close enough that at
+    # this scale the digits and the line touch. Place them above the line instead
+    # of beside the bar: a mask cannot help when the line's height depends on
+    # n_genes, and nudging by a few genes just moves the collision.
+    label_y = 0.05 * n_genes * 1.25
     for xi, v in zip(x + 0.2, df["pseudobulk"]):
-        ax.text(xi, v + 6, f"{v:.0f}", ha="center", va="bottom", fontsize=7)
+        ax.text(xi, label_y, f"{v:.0f}", ha="center", va="bottom", fontsize=7,
+                color="0.25")
     ax.set_ylim(0, df["per_cell"].max() * 1.5)
     ax.legend(frameon=False, fontsize=8, loc="upper right")
     note = ""
@@ -218,7 +225,8 @@ def fig_sample_sweep():
     ax.plot(df["sample_sd"], df["pseudobulk"], "o-", color="C0",
             label="pseudobulk paired t")
     for sd, v in zip(df["sample_sd"], df["per_cell"]):
-        ax.text(sd, v + 12, f"{v:.1f}", ha="center", va="bottom", fontsize=7.5)
+        ax.text(sd, v + 12, f"{v:.1f}", ha="center", va="bottom", fontsize=7.5,
+                bbox=dict(facecolor="white", edgecolor="none", pad=0.6, alpha=0.85))
     first, last = df.iloc[0], df.iloc[-1]
     ax.set(xlabel="sample-level variation (donor x condition, log SD)",
            ylabel="false positives (of 500 null genes, BH q < 0.05)",
@@ -246,7 +254,10 @@ def fig_normalisation():
                 label="total-count CPM" if norm == "cpm"
                       else "median-of-ratios")
         for n, v in zip(g["n_donors"], g["fdp"]):
-            ax.text(n, v + (0.008 if norm == "cpm" else -0.008), f"{v:.3f}",
+            # The -0.008 offset put the TOP of the median-of-ratios text on the
+            # dashed nominal-5% line (0.0592 - 0.008 = 0.0512 vs 0.050), so the
+            # line grazed the digits. -0.016 clears it with room to spare.
+            ax.text(n, v + (0.010 if norm == "cpm" else -0.016), f"{v:.3f}",
                     ha="center", va="bottom" if norm == "cpm" else "top",
                     fontsize=7.5)
     ax.axhline(0.05, ls="--", lw=1, color="grey", label="nominal 5%")
@@ -288,13 +299,15 @@ def fig_real_null():
     ax.set(xlabel="random donor split (control cells only)",
            ylabel=f"genes called significant\n(of {n_genes:,}, BH q < 0.05)",
            title="Real data (Kang 2018, CD14+ monocytes), donors shuffled:\n"
-                 f"per-cell calls a median {df['per_cell'].median():.0f} false genes "
-                 f"per split, pseudobulk a median "
-                 f"{df['pseudobulk'].median():.0f} "
+                 f"per-cell median {df['per_cell'].median():.0f} false genes per "
+                 f"split; pseudobulk median {df['pseudobulk'].median():.0f} "
                  f"(max {df['pseudobulk'].max():.0f})")
     ax.title.set_fontsize(10)
     ax.set_xticks(df["split"] + 1)
-    ax.legend(frameon=False, fontsize=8, loc="upper right")
+    # Upper left: the per-cell series climbs left-to-right, so the top-right
+    # corner is exactly where its final point sits.
+    ax.legend(frameon=False, fontsize=8, loc="upper center",
+              bbox_to_anchor=(0.5, -0.18), ncol=2)
     share = df["per_cell"] / df["n_genes_sc"]
     _save(fig, "real_null.png",
           f"n = {len(df)} random donor splits of control cells only "
@@ -354,7 +367,9 @@ def fig_isg_ranking():
     axes[1].set_ylim(0, 13)
     axes[1].set_xticks(x)
     axes[1].set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
-    axes[1].set_ylabel("known interferon genes in the top 12 of the list")
+    # One line, not two: the wrapped version pushed its last word against the
+    # top edge of the canvas.
+    axes[1].set_ylabel("known interferon genes in top 12")
     axes[1].set_title(
         "Interferon genes among the top 12: "
         f"{df['isgs_top12_by_q'].sum()} of {12 * len(df)} by q-value,\n"
@@ -565,8 +580,12 @@ def fig_boundary():
                  f"{r_bnd:.2f}x above the paired t;\n"
                  f"interior fits agree within {100 * (r_int - 1):.2f}%")
     ax.title.set_fontsize(10)
-    ax.legend(fontsize=7.5, loc="upper left", markerscale=2.5, frameon=True,
-              framealpha=0.9, edgecolor="none")
+    # Lower right: the point cloud is a diagonal band rising to the upper right,
+    # so upper left is where the dense boundary points are, not empty space.
+    # Outside the axes: the cloud is a diagonal band and every in-axes corner
+    # holds points, so no rectangle can be guaranteed empty.
+    ax.legend(fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, -0.16),
+              markerscale=2.5, frameon=False, ncol=2)
 
     ax = axes[1]
     x = np.arange(len(tab))
@@ -639,8 +658,15 @@ def fig_plan_space():
                 fontsize=10, fontweight="bold")
     top = max(plans)
     if cap is not None:
-        ax.axhline(cap, ls="--", lw=1, color="grey",
-                   label=f"{cap} draws requested (NULL_PERMS cap)")
+        # Labelled at the line's right end instead of in a legend: any legend in
+        # the upper area is drawn across this full-width line, and the line is the
+        # point of the figure.
+        ax.axhline(cap, ls="--", lw=1, color="grey")
+        ax.annotate(f"{cap} draws requested (NULL_PERMS cap)", xy=(1.0, cap),
+                    xycoords=("axes fraction", "data"), xytext=(-2, -3),
+                    textcoords="offset points", ha="right", va="top",
+                    fontsize=7.5, color="0.3",
+                    bbox=dict(facecolor="white", edgecolor="none", pad=0.5))
         top = max(top, cap)
     ax.set_ylim(0, top * 1.12)
     ax.set_xticks(x)
@@ -692,14 +718,17 @@ def fig_log2fc_agreement():
         ax.plot(x, b_diff, "o", color="C3", mec="black", mew=0.5,
                 label="before: GLM on total-count CPM, pseudobulk on size factors")
         for xi, v in zip(x, b_diff):
-            ax.text(xi, v * 1.6, f"{v:.2f}", ha="center", va="bottom", fontsize=7)
+            ax.text(xi, v * 1.6, f"{v:.2f}", ha="center", va="bottom", fontsize=7,
+                    bbox=dict(facecolor="white", edgecolor="none", pad=0.6, alpha=0.85))
     ax.plot(x, shown, "o", color="C0", mec="black", mew=0.5,
             label="now: both on median-of-ratios size factors")
     for xi, v, s in zip(x, a_diff, shown):
         ax.text(xi, s * 1.6, "0 (exact)" if v == 0 else f"{v:.0e}", ha="center",
-                va="bottom", fontsize=7)
+                va="bottom", fontsize=7, bbox=dict(facecolor="white", edgecolor="none", pad=0.6, alpha=0.85))
     ax.set_yscale("log")
-    ax.set_ylim(floor, 5)
+    # Bottom at floor/4, not floor: the exact-zero marker is drawn at 2*floor and
+    # its label sat on the axis spine, clipped by the frame.
+    ax.set_ylim(floor / 4, 12)
     ax.set_xlim(-0.6, len(types) - 0.4)
     ax.set_xticks(x)
     ax.set_xticklabels([_tick(t) for t in types], fontsize=7.5)
@@ -712,7 +741,10 @@ def fig_log2fc_agreement():
     ax.set(ylabel="mean |GLM log2FC - pseudobulk log2FC|\n(log2 units, log scale)",
            title=title)
     ax.title.set_fontsize(10)
-    ax.legend(frameon=False, fontsize=7.5, loc="center")
+    # Below the axes rather than in the middle: every x has a vertical stem, so
+    # any in-axes position overlaps one.
+    ax.legend(frameon=False, fontsize=7.5, loc="upper center",
+              bbox_to_anchor=(0.5, -0.16), ncol=1)
 
     ax = axes[1]
     sep = after["glm_separated"].to_numpy()
@@ -822,15 +854,20 @@ def fig_megakaryocyte():
                  f"one donor from >= {first_single} cells up")
     ax.title.set_fontsize(10)
     ax.legend(frameon=False, fontsize=8, loc="upper right")
-    ax.text(0.98, 0.5,
-            f"loosest design: {int(s['donors_in_loosest_design'])} donors, profiles of "
-            f"{int(s['cells_per_profile_min'])}-{int(s['cells_per_profile_max'])} cells\n"
-            f"{int(s['genes_tested'])} genes tested, {int(s['genes_significant'])} called\n"
-            f"minimum detectable effect (80% power): {s['mde_log2_exact_noncentral_t']:.2f} "
-            f"log2,\n{s['mde_log2_exact_bonferroni']:.2f} log2 with Bonferroni; largest "
-            f"observed |log2FC| {s['largest_observed_abs_log2fc']:.2f}",
-            transform=ax.transAxes, ha="right", va="top", fontsize=7.5)
+    # The design note lives in the footer, not inside the axes: at fontsize 7.5
+    # it was wide enough to run through the grey connecting line and the markers.
+    # The footer is wrapped to the figure width by _save(), so it cannot overflow.
+    design_note = (
+        f"loosest usable design: {int(s['donors_in_loosest_design'])} donors, "
+        f"profiles of {int(s['cells_per_profile_min'])}-"
+        f"{int(s['cells_per_profile_max'])} cells; "
+        f"{int(s['genes_tested'])} genes tested, {int(s['genes_significant'])} called; "
+        f"minimum detectable effect (80% power) "
+        f"{s['mde_log2_exact_noncentral_t']:.2f} log2 "
+        f"({s['mde_log2_exact_bonferroni']:.2f} with Bonferroni) vs largest observed "
+        f"|log2FC| {s['largest_observed_abs_log2fc']:.2f}. ")
     _save(fig, "megakaryocyte_donors.png",
+          design_note +
           f"n = {int(s['n_cells'])} megakaryocytes ({int(s['ctrl_cells'])} control, "
           f"{int(s['stim_cells'])} stimulated) across {len(d)} donors; the composition "
           "test (all 8 donors) is unaffected. The sweep counts donors with at least "
