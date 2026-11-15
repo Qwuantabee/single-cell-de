@@ -113,8 +113,19 @@ def fig_null():
            color="C3", edgecolor="black", linewidth=0.5)
     ax.bar(x + 0.2, df["pseudobulk"], width=0.4, label="pseudobulk paired t",
            color="C0", edgecolor="black", linewidth=0.5)
-    ax.axhline(0.05 * n_genes, ls="--", lw=1, color="grey",
-               label=f"{0.05 * n_genes:.0f} = 5% of genes (uncorrected p < 0.05)")
+    # Reference honesty (2026-11-15): this line is 5% of genes, which is what an
+    # UNCORRECTED p < 0.05 threshold would reject. The calls plotted are BH
+    # q < 0.05, whose expected count under an exact null is ~0.06 genes, not 25.
+    # Drawing the uncorrected number on a corrected axis set the wrong bar and
+    # made the methods look closer to calibrated than they are. The line is kept
+    # (it is the threshold the README argues against) but relabelled as such, and
+    # the BH expectation is drawn where it belongs - at zero.
+    ax.axhline(0.05 * n_genes, ls=":", lw=1, color="0.55",
+               label=f"{0.05 * n_genes:.0f} = 5% if p were UNCORRECTED (not this test)")
+    if bh is not None:
+        ax.axhline(float(bh["mean_rejections"].iloc[0]), ls="--", lw=1.2, color="black",
+                   label=f"BH expectation under an exact null: "
+                         f"{bh['mean_rejections'].iloc[0]:.2f} genes")
     ax.set(xlabel="simulation replicate",
            ylabel=f"genes called significant\n(of {n_genes}, BH q < 0.05)",
            title="Nothing changed, yet per-cell Wilcoxon calls "
@@ -270,8 +281,10 @@ def fig_real_null():
     ax.plot(df["split"] + 1, df["pseudobulk"], "o-", color="C0",
             label="pseudobulk paired t")
     n_genes = int(df["n_genes_sc"].iloc[0])
-    ax.axhline(0.05 * n_genes, ls="--", lw=1, color="grey",
-               label=f"5% of {n_genes:,} genes (uncorrected p < 0.05)")
+    # Same correction as fig_null: the plotted calls are BH q < 0.05, so a 5%-of-
+    # genes line is an uncorrected-p reference and must say so (2026-11-15).
+    ax.axhline(0.05 * n_genes, ls=":", lw=1, color="0.55",
+               label=f"{0.05 * n_genes:.0f} = 5% if p were UNCORRECTED (not this test)")
     ax.set(xlabel="random donor split (control cells only)",
            ylabel=f"genes called significant\n(of {n_genes:,}, BH q < 0.05)",
            title="Real data (Kang 2018, CD14+ monocytes), donors shuffled:\n"
