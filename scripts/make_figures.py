@@ -276,7 +276,9 @@ def fig_real_null():
            ylabel=f"genes called significant\n(of {n_genes:,}, BH q < 0.05)",
            title="Real data (Kang 2018, CD14+ monocytes), donors shuffled:\n"
                  f"per-cell calls a median {df['per_cell'].median():.0f} false genes "
-                 f"per split, pseudobulk {df['pseudobulk'].median():.0f}")
+                 f"per split, pseudobulk a median "
+                 f"{df['pseudobulk'].median():.0f} "
+                 f"(max {df['pseudobulk'].max():.0f})")
     ax.title.set_fontsize(10)
     ax.set_xticks(df["split"] + 1)
     ax.legend(frameon=False, fontsize=8, loc="upper right")
@@ -394,8 +396,11 @@ def fig_mixed_null():
                                             pb["n_distinct_draws"])],
                        fontsize=7.5)
     ax.set(ylabel=f"false positives per draw\n(BH q < 0.05, {n_genes} null genes)",
-           title="Mixed model and pseudobulk make the same null calls:\n"
-                 f"the same false-positive count in {same} of {n_draws} balanced draws")
+           # Wording (2026-11-15): "make the same null calls" claimed the same
+           # GENES are called; the artefacts store per-draw counts, not call
+           # sets, so only the count is measured. Say what was measured.
+           title="Mixed model and pseudobulk make the same number of null\n"
+                 f"false calls: identical in {same} of {n_draws} balanced draws")
     ax.title.set_fontsize(10)
     ax.legend(frameon=False, fontsize=8, loc="upper left")
     _save(fig, "mixed_vs_pseudobulk_null.png",
@@ -1003,10 +1008,23 @@ def fig_at_a_glance():
     ax.set_ylim(0, 1.3)
     ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
     more = 100 * (nbsum["n_nb"] / nbsum["n_pb"] - 1)
+    # Title honesty (2026-11-15): this said "where pseudobulk makes none", which
+    # is false for CD8 T cells - pseudobulk makes 1 false call in 15 draws
+    # there, and CD8 is one of the highlighted types. State the measured worst
+    # pseudobulk rate among the highlighted types instead of asserting zero.
+    pb_hot = [(int(pb.at[ct, "n_draws_with_any_fp"]), int(pb.at[ct, "draws"]))
+              for ct in hot]
+    pb_worst = max(pb_hot, default=(0, 0), key=lambda nd: nd[0] / max(nd[1], 1))
+    if pb_worst[0] == 0:
+        pb_clause = "where pseudobulk makes none"
+    else:
+        pb_clause = (f"where pseudobulk makes at most {pb_worst[0]}/{pb_worst[1]}"
+                     if pb_worst[0] <= 1 else
+                     f", where pseudobulk makes up to {pb_worst[0]}/{pb_worst[1]}")
     ax.set(ylabel="share of balanced null draws\nwith >= 1 false positive",
            title=f"NB GLM: {more.min():.0f}-{more.max():.0f}% more genes called, but false calls\n"
                  "on a balanced null in " + " and ".join(_short(ct) for ct in hot)
-                 + ",\nwhere pseudobulk makes none")
+                 + ",\n" + pb_clause)
     ax.title.set_fontsize(9.5)
     ax.legend(frameon=False, fontsize=8, loc="upper right")
     _panel_letter(ax, "D")
