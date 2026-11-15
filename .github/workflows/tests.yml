@@ -38,10 +38,10 @@ jobs:
         # This script takes figure names as positional arguments and defaults to
         # all of them, so it is invoked bare; passing --all raises 'unknown
         # figure(s)'. Caught by running the workflow's own command locally.
+        #
+        # Pixel comparison, not `git diff`: matplotlib stamps its own version
+        # into a tEXt chunk, so a runner with a different matplotlib produces a
+        # byte-different PNG with identical pixels.
         run: |
           python scripts/make_figures.py
-          git diff --exit-code --stat -- figures/ || {
-            echo "figures/ changed when regenerated from committed data.";
-            echo "Commit the regenerated PNGs, or the artefacts drifted.";
-            exit 1;
-          }
+          python scripts/check_figures.py --dir figures
