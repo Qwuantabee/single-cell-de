@@ -29,7 +29,7 @@ jobs:
       # The Kang 2018 dataset is not committed (it is a third-party download and
       # large), but this suite needs none of it: every test either simulates its
       # input or reads a committed results/ artefact. Measured on a checkout
-      # with no data/ at all: 121 passed, 0 skipped. If this step ever needs a
+      # with no data/ at all: 122 passed, 0 skipped. If this step ever needs a
       # skip switch, a test has quietly become data-dependent.
       - name: tests
         run: python -m pytest tests/ -q

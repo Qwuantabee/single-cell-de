@@ -24,6 +24,21 @@ Cells from one donor are not independent observations. Treating 6,400 cells from
 - **Real data has no ground truth**: power and false discovery proportion are simulated only; the simulator draws negative-binomial counts, which is the NB GLM's own model.
 - The donor counts, gene filters, ISG panel (12 genes) and the |log₂FC| < 0.5 "small-effect" null set are the author's choices.
 
+## Corrections to this repo's own earlier claims
+
+Each was found by re-running against the committed artefacts, and each is described where it applies.
+
+| what was wrong | where | commit |
+|---|---|---|
+| Composition table had ctrl and stim swapped, so every sign was reversed | §7 | `6d5fb63` |
+| Null reference was 25 of 500 (uncorrected p) where BH expects about 0.05 of 500 | §1, §8 | `b72cde6`, `6f3e0fd` |
+| Mixed model reported 12–272× null inflation: a normal reference at 4–8 pairs, and unpaired profiles in the mixed arm | §8 | `7f1e46d`, `96f8026` |
+| GLM and pseudobulk log₂FC "agreed to three decimals" while on different normalisations | §9 | `8f09882` |
+| Nulls resampled plans that do not exist as distinct draws; GLM "calibrated" on one type and ten draws | §8, §9 | `eb13b69`, `4b90d2a` |
+| Simulated effect labelled 2-fold / log₂ 1.0; it is 1.0 on the natural-log scale (2.72-fold) | §2, Still to do | this revision |
+
+The simulator fix described under "How the simulation got fixed" and the first-version normalisation numbers in §4 predate the first commit, so they are narrated here and cannot be checked from the history.
+
 ## 1. False positives when nothing is happening
 
 500 genes, 8 donors, 400 cells per donor per condition, zero genes truly changed: every call is a false positive by construction (no gene has a condition effect; each sample gets an independent shift with SD 0.3 on the natural-log scale, the simulator default, swept in §3).
@@ -40,7 +55,7 @@ The obvious defence of per-cell testing is sensitivity. With 50 of 500 genes giv
 
 ![power vs fdp](figures/power_vs_fdp.png)
 
-*Both recover the real genes; per-cell also returns 326 that are not real, so 87% of its hit list is wrong. It is not finding more, it is calling more. (The figure footer says "2-fold"; the planted effect is 2.72-fold.)*
+*Both recover the real genes; per-cell also returns 326 that are not real, so 87% of its hit list is wrong. It is not finding more, it is calling more.*
 
 This is one effect size at one donor count, not a power curve. Pseudobulk's power falls with fewer donors (68% at 6 and 0% at 3 for the same paired t in the grid under "Still to do"), and no smaller effect was simulated against the per-cell test, so "loses no power" holds here and is not shown elsewhere. A per-cell test that calls three quarters of all genes will always contain the true ones; that is not power in any useful sense.
 
@@ -72,7 +87,7 @@ Kang et al. 2018: PBMCs from 8 lupus patients, each split into a control and an 
 
 *Per-cell Wilcoxon: median 307 false positives per split (max 988; 15.4% of the 2,000 genes tested), mean 395.9 (19.8%). Pseudobulk: median 0, max 1. The simulation was not exaggerating.*
 
-(Share = false positives / genes tested per split, over the 20 splits in `results/false_positives.csv`. 15.4% is the *median* share, 307/2,000; 19.8% is the *mean* share. An earlier version of this row mixed the two statistics.)
+(Share = false positives / genes tested per split, over the 20 splits in `results/false_positives.csv`. 15.4% is the *median* share, 307/2,000; 19.8% is the *mean* share. An earlier version of this row mixed the two statistics. The 20 splits are random draws, not 20 distinct splits: eight donors have only 35 distinct 4-vs-4 splits, and only 14 distinct per-cell counts occur among the 20, six of them twice. This is also an unpaired 4-vs-4 comparison of whole donors, a different design from the paired one used everywhere else.)
 
 ## 6. The positive control, and a ranking problem
 
@@ -96,7 +111,7 @@ Three "rank" definitions appear in this README and are not interchangeable; comp
 
 If the *mix* of cell types differs between conditions, a pooled comparison compares two cell mixtures, not two expression states: every marker of whichever type became more common comes out "up", with valid p-values, for a question nobody asked. On Kang the composition moves only slightly. Mean proportion ctrl → stim, with the log₂ ratio stim / ctrl: CD14+ monocytes 0.254 → 0.238 (−0.10), megakaryocytes 0.015 → 0.012 (−0.30), CD4 T 0.440 → 0.448 (+0.03), NK 0.067 → 0.068 (+0.01), B 0.098 → 0.102 (+0.07).
 
-The largest shift is 0.30 log₂ (1.2×) and a *decrease* (megakaryocytes, 1.51% → 1.22% of cells); CD14+ monocytes also fall, in 7 of 8 donors. Every sign is the reverse of an earlier version of this table, whose `mean_ctrl` and `mean_stim` columns had been read in the wrong order. Interferon-β does not rearrange PBMC composition much, so this dataset is *not* the case where pooling fails for that reason; a disease contrast, where composition effects usually bite, would be.
+The largest shift is 0.30 log₂ (1.2×) and a *decrease* (megakaryocytes, 1.51% → 1.22% of cells); CD14+ monocytes also fall, in 7 of 8 donors. Every sign is the reverse of an earlier version of this table, whose `mean_ctrl` and `mean_stim` columns had been read in the wrong order (commit `6d5fb63`). Interferon-β does not rearrange PBMC composition much, so this dataset is *not* the case where pooling fails for that reason; a disease contrast, where composition effects usually bite, would be.
 
 <details><summary>Sign convention</summary>
 
@@ -359,7 +374,7 @@ python scripts/make_figures.py          # all figures; name some to rebuild only
 
 - ~~Replace the paired t-test on log counts with a negative-binomial GLM (what DESeq2 and edgeR do), and check what the normal approximation costs on small donor counts.~~ **Done**: `src/scpipe/nbglm.py`, `scripts/nbglm_study.py`, `results/sim_nbglm.csv`.
 
-  The GLM is median-of-ratios size factors as an offset, per-gene method-of-moments dispersion shrunk toward an expression trend, and a Wald test on the condition coefficient against a t distribution with (samples − parameters) df. Over 10 replicates per cell of the donor grid (300 genes, 30 truly changed at natural-log effect 1.0, i.e. 2.72-fold or 1.44 log₂ (the script and the figure footer label it "log2 effect 1.0", which is wrong: `simulate.py` applies it inside `exp`), BH α = 0.05), power is what moved:
+  The GLM is median-of-ratios size factors as an offset, per-gene method-of-moments dispersion shrunk toward an expression trend, and a Wald test on the condition coefficient against a t distribution with (samples − parameters) df. Over 10 replicates per cell of the donor grid (300 genes, 30 truly changed at natural-log effect 1.0, i.e. 2.72-fold or 1.44 log₂ (earlier labelled "log2 effect 1.0", which was wrong: `simulate.py` applies it inside `exp`), BH α = 0.05), power is what moved:
 
   ![simulated NB GLM vs paired t](figures/nbglm_sim_power.png)
 
