@@ -3,13 +3,13 @@
 
 The question this answers, and the two wrong answers I tried first.
 
-Attempt 1: `git diff --exit-code -- figures/`. Failed on all three repos with
+Attempt 1: `git diff --exit-code -- figures/`. Failed with
 `Bin 142376 -> 142376 bytes` - same size, different bytes - because matplotlib
 writes its own version into a tEXt chunk. That check tested the matplotlib
 version, not the figure.
 
 Attempt 2: compare decoded pixel arrays. That failed too, and the CI log is the
-proof: every one of the 11 enzyme figures reported "pixels differ" on the
+proof: every figure reported "pixels differ" on the
 runner while being identical locally. Rendering is not portable - matplotlib
 version, freetype, and the installed font set all change anti-aliasing and glyph
 shapes. Pixel identity across machines is not an achievable invariant, so a
