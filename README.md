@@ -26,7 +26,7 @@ Cells from one donor are not independent observations. Treating 6,400 cells from
 
 ## Corrections to this repo's own earlier claims
 
-Each was found by re-running against the committed artefacts, and each is described where it applies.
+Each is described in the section where it applies.
 
 | what was wrong | where | commit |
 |---|---|---|
