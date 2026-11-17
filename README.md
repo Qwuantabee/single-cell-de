@@ -4,21 +4,29 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Qwuantabee/single-cell-de/blob/main/LICENSE)
 [![python](https://img.shields.io/badge/python-3.10--3.12-blue.svg)](https://github.com/Qwuantabee/single-cell-de/blob/main/pyproject.toml)
 
-Treating every cell as a replicate is tempting, and this project measures what it costs. On simulated data where nothing changes between conditions, a per-cell Wilcoxon test called **73% of all genes significant** at a 5% false discovery rate; pseudobulk aggregation called none. The sections below repeat the test on real data, then hold two alternatives (a mixed model, a negative-binomial GLM) to the same standard.
+Treating every cell as a replicate is tempting, and this project measures what it costs. On simulated data where nothing changes between conditions, a per-cell Wilcoxon test called **73% of all genes significant** at a 5% false discovery rate; pseudobulk aggregation called none. On real control cells (Kang 2018, CD14+ monocytes, donors split at random) the same test called a median of 15% of genes and pseudobulk a median of 0. The 73% is specific to the simulator's assumed sample-to-sample variation (§3 sweeps it from 0% to 81%). The sections below repeat the test on real data, then hold two alternatives (a mixed model, a negative-binomial GLM) to the same standard.
 
 ## At a glance
 
 ![at a glance](figures/at_a_glance.png)
 
-*A: per-cell testing manufactures false positives on null data, simulated and real; pseudobulk does not. B: it buys no power. C: the donor-intercept mixed model is the pseudobulk test at far higher cost (§8). D: the NB GLM calls more genes but is anti-conservative on B cells and CD14+ monocytes (§9). C and D correct earlier claims of this repo.*
+*A: per-cell testing manufactures false positives on null data, simulated and real; pseudobulk does not. B: at the one effect size and donor count simulated (an e-fold change, 8 donors) per-cell testing finds no more of the true genes (50.0 vs 48.8 of 50); this is not a general power result (§2, Limits). C: the donor-intercept mixed model is the pseudobulk test at far higher cost (§8). D: the NB GLM calls more genes but is anti-conservative on B cells and CD14+ monocytes (§9). C and D correct earlier claims of this repo.*
 
 ## The argument
 
 Cells from one donor are not independent observations. Treating 6,400 cells from 8 donors as 6,400 samples inflates the effective sample size by three orders of magnitude, and the p-values stop meaning what they say. The replicate is the donor, because the donor is what was randomised. This is established (Squair et al. 2021, Nat Commun 12:5692) but still the default in most tutorials, so it is worth demonstrating, not citing.
 
+## Limits
+
+- **The 73% is a simulator setting, not a constant of nature.** It is measured at one assumed sample-level SD (0.3 on the natural-log scale, a simulator default chosen by the author; no fit to data is in this repo). §3 shows 0% at SD 0 and 81% at SD 0.5; the real-data figure is 15% (median) to 20% (mean) on one cell type of one dataset.
+- **"No power lost" is measured at one point.** One effect size (natural-log effect 1.0: 2.72-fold, 1.44 log₂), 8 donors, 400 cells per sample, 10 replicates: pseudobulk recovers 48.8 of 50 true genes against 50.0. Smaller effects were not simulated against the per-cell test. With fewer donors the pseudobulk paired t does lose power in this repo's own grid (68% at 6 donors, 0% at 3; "Still to do"), and per-cell "power" is not comparable anyway, because 87% of its calls are false.
+- **One real dataset** (Kang 2018, 8 donors, one stimulus). The real-data nulls can show anti-conservatism, not calibration (§8, §9), and several have 15–70 draws.
+- **Real data has no ground truth**: power and false discovery proportion are simulated only; the simulator draws negative-binomial counts, which is the NB GLM's own model.
+- The donor counts, gene filters, ISG panel (12 genes) and the |log₂FC| < 0.5 "small-effect" null set are the author's choices.
+
 ## 1. False positives when nothing is happening
 
-500 genes, 8 donors, 400 cells per donor per condition, zero genes truly changed: every call is a false positive by construction.
+500 genes, 8 donors, 400 cells per donor per condition, zero genes truly changed: every call is a false positive by construction (no gene has a condition effect; each sample gets an independent shift with SD 0.3 on the natural-log scale, the simulator default, swept in §3).
 
 ![null false positives](figures/null_false_positives.png)
 
@@ -26,13 +34,15 @@ Cells from one donor are not independent observations. Treating 6,400 cells from
 
 The dashed line is the *uncorrected* p < 0.05 expectation (5% × 500 = 25). Under the Benjamini-Hochberg correction both methods use at q = 0.05, a calibrated test on all-null data calls a mean of about **0.05 of 500**, not 25: BH bounds the false-discovery *proportion* among rejections, so a correct procedure returns essentially nothing. That distinction matters for how the mixed-model null in §8 is read.
 
-## 2. It is not buying power
+## 2. It is not buying power (at the effect size tested)
 
-The obvious defence of per-cell testing is sensitivity. With 50 of 500 genes given a real 2-fold effect, per-cell Wilcoxon calls 376.5 genes (50.0 true, 326.5 false; power 1.00, observed FDP **0.87**) and pseudobulk calls 51.3 (48.8 true, 2.5 false; power 0.98, FDP **0.05**).
+The obvious defence of per-cell testing is sensitivity. With 50 of 500 genes given a real effect of 1.0 on the natural-log scale (2.72-fold, 1.44 log₂; an earlier version of this sentence called it 2-fold, but `simulate.py` applies the effect inside `exp`), 8 donors, per-cell Wilcoxon calls 376.5 genes (50.0 true, 326.5 false; power 1.00, observed FDP **0.87**) and pseudobulk calls 51.3 (48.8 true, 2.5 false; power 0.98, FDP **0.05**).
 
 ![power vs fdp](figures/power_vs_fdp.png)
 
-*Both recover the real genes; per-cell also returns 326 that are not real, so 87% of its hit list is wrong. It is not finding more, it is calling more.*
+*Both recover the real genes; per-cell also returns 326 that are not real, so 87% of its hit list is wrong. It is not finding more, it is calling more. (The figure footer says "2-fold"; the planted effect is 2.72-fold.)*
+
+This is one effect size at one donor count, not a power curve. Pseudobulk's power falls with fewer donors (68% at 6 and 0% at 3 for the same paired t in the grid under "Still to do"), and no smaller effect was simulated against the per-cell test, so "loses no power" holds here and is not shown elsewhere. A per-cell test that calls three quarters of all genes will always contain the true ones; that is not power in any useful sense.
 
 ## 3. Why — and the test that proves it
 
@@ -72,7 +82,7 @@ A method that calls nothing is trivially free of false positives, so check that 
 
 *Ranking the same significant genes by effect size moves the median interferon-gene rank from 50 to 10 across the seven cell types, and the interferon genes in the top 12 from 9 of 84 to 51 of 84.*
 
-The cause is the degrees of freedom. A paired t-test on 8 donors has 7 df, which floors the p-value (the smallest q anywhere in this analysis is 1.5 × 10⁻⁶). Hundreds of genes pile against the floor and their order is decided by noise, so a modest but very consistent change outranks a 400-fold one that wobbles between donors. Use the p-value as a filter and the effect size as the ranking.
+The cause is the degrees of freedom. A paired t-test on 8 donors has 7 df, which floors the p-value (the smallest q in this cell type is 1.5 × 10⁻⁶; across all seven types it is 6.6 × 10⁻⁷, on CD4 T cells). Hundreds of genes pile against the floor and their order is decided by noise, so a modest but very consistent change outranks a 400-fold one that wobbles between donors. Use the p-value as a filter and the effect size as the ranking.
 
 Three "rank" definitions appear in this README and are not interchangeable; compare only inside one.
 
@@ -261,7 +271,7 @@ EDN1, PDGFRL, CH25H, ELOVL3, HRASLS2, LAG3 and BCL2L14 (CD14+ monocytes); IL1RN,
 
 **The ISGs.** All 12 are called by both methods in 6 of 7 types (NK is the exception). Under definition (c) of §6 the median ISG rank on CD4 T cells is 73.5 under pseudobulk versus 16 under the GLM, and the pattern holds everywhere (FCGR3A+ monocytes: 172 vs 11): the GLM orders the real signal more cleanly even where call counts are similar.
 
-**The real null.** Labels are swapped within donors by `permutation.swap_cells` (no cell changes donor), BH q < 0.05. Only a balanced swap (k = n/2) is a true null. On CD4 T cells over the whole gene set (7,048 genes) pseudobulk makes 0.0 false positives per draw and the GLM 3.69 (max 89), a mean dominated by a single plan: of the 35 distinct plans one gives 89 and the other 34 give 0–4 (mean 1.2, median 0 over all 35). The previous version reported 0.3 (maximum 3) over ten draws chosen by seed; I did not trace which plans those were or why one plan is so heavy. On the small-effect genes (|log₂FC| < 0.5, ISGs removed) the GLM averages 0.057 per draw on CD4, but not uniformly across types:
+**The real null.** Labels are swapped within donors by `permutation.swap_cells` (no cell changes donor), BH q < 0.05. Only a balanced swap (k = n/2) is a true null. On CD4 T cells over the whole gene set (7,048 genes) pseudobulk makes 0.0 false positives per draw and the GLM 3.69 (max 89), a mean dominated by a single plan: of the 35 distinct plans one gives 89 and the other 34 give 0–4 (mean 1.2 over those 34; the median over all 35 is 0). The previous version reported 0.3 (maximum 3) over ten draws chosen by seed; I did not trace which plans those were or why one plan is so heavy. On the small-effect genes (|log₂FC| < 0.5, ISGs removed) the GLM averages 0.057 per draw on CD4, but not uniformly across types:
 
 <details><summary>Coin-flip families on CD4 (all 7,048 genes, <code>results/nbglm_real_null.csv</code>)</summary>
 
@@ -349,13 +359,13 @@ python scripts/make_figures.py          # all figures; name some to rebuild only
 
 - ~~Replace the paired t-test on log counts with a negative-binomial GLM (what DESeq2 and edgeR do), and check what the normal approximation costs on small donor counts.~~ **Done**: `src/scpipe/nbglm.py`, `scripts/nbglm_study.py`, `results/sim_nbglm.csv`.
 
-  The GLM is median-of-ratios size factors as an offset, per-gene method-of-moments dispersion shrunk toward an expression trend, and a Wald test on the condition coefficient against a t distribution with (samples − parameters) df. Over 10 replicates per cell of the donor grid (300 genes, 30 truly changed at log2 effect 1.0, BH α = 0.05), power is what moved:
+  The GLM is median-of-ratios size factors as an offset, per-gene method-of-moments dispersion shrunk toward an expression trend, and a Wald test on the condition coefficient against a t distribution with (samples − parameters) df. Over 10 replicates per cell of the donor grid (300 genes, 30 truly changed at natural-log effect 1.0, i.e. 2.72-fold or 1.44 log₂ (the script and the figure footer label it "log2 effect 1.0", which is wrong: `simulate.py` applies it inside `exp`), BH α = 0.05), power is what moved:
 
   ![simulated NB GLM vs paired t](figures/nbglm_sim_power.png)
 
   *Simulated: at 6 donors the NB GLM finds 97% of the changed genes against 68% for the paired t-test, at the same observed false discovery proportion (0.028 vs 0.042); both reach 100% from 12 donors.*
 
-  FDP is 0.057 vs 0.049 at 12 donors and 0.043 vs 0.059 at 24. At 3 donors neither finds a changed gene (the t-test made one false call across the 10 replicates, the GLM none), because the per-sample variance swamps a 2× effect at three pairs whatever the test. So the normal approximation is expensive in the 3–8 donor range where most published designs live, and free above 12. **Every number here is simulated, not real**: the generator draws negative-binomial counts (the GLM's own model) and the dispersion-trend floor in `nbglm.py` was tuned on it, so this is the GLM's best case and not out-of-sample. Real counts are in §9 (`scripts/nbglm_real.py`, `results/nbglm_real_*.csv`); that measurement replaced the hedge that used to sit here ("on real data the gap is unlikely to be larger than this and could be smaller").
+  FDP is 0.057 vs 0.049 at 12 donors and 0.043 vs 0.059 at 24. At 3 donors neither finds a changed gene (the t-test made one false call across the 10 replicates, the GLM none), because the per-sample variance swamps a 2.7× effect at three pairs whatever the test. So the normal approximation is expensive in the 3–8 donor range where most published designs live, and free above 12. **Every number here is simulated, not real**: the generator draws negative-binomial counts (the GLM's own model) and the dispersion-trend floor in `nbglm.py` was tuned on it, so this is the GLM's best case and not out-of-sample. Real counts are in §9 (`scripts/nbglm_real.py`, `results/nbglm_real_*.csv`); that measurement replaced the hedge that used to sit here ("on real data the gap is unlikely to be larger than this and could be smaller").
 
 ## Note on how this was built
 
