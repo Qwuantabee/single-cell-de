@@ -996,8 +996,18 @@ def fig_at_a_glance():
     ax.legend(frameon=False, fontsize=8, loc="upper right")
     _panel_letter(ax, "A")
 
-    # B: power and false discovery proportion
+    # B: power and false discovery proportion. The power point is one effect size
+    # and one donor count; the title says so and quotes the paired t at 6 donors
+    # from the simulated donor grid, so the panel cannot be read as a power curve.
     ax = axes[0, 1]
+    six_donor_clause = ""
+    grid_path = RESULTS / "sim_nbglm_summary.csv"
+    if grid_path.exists():
+        grid = pd.read_csv(grid_path)
+        six = grid[(grid.donors == 6) & (grid.method == "paired_t_logcpm")]
+        if len(six) == 1:
+            six_donor_clause = (f";\nat 6 donors the paired t finds "
+                                f"{six.power_mean.iloc[0]:.0%} of true genes")
     agg = power.groupby("method")[["power", "fdp"]].mean()
     order = ["per_cell", "pseudobulk"]
     names = {"per_cell": "per-cell\nWilcoxon", "pseudobulk": "pseudobulk\npaired t"}
@@ -1013,10 +1023,10 @@ def fig_at_a_glance():
                        fontsize=8)
     ax.set_ylim(0, 1.05)
     ax.set(ylabel="observed false discovery proportion",
-           title=f"Same power ({agg.at['per_cell', 'power']:.2f} vs "
-                 f"{agg.at['pseudobulk', 'power']:.2f}), but per-cell hit lists are\n"
+           title=f"At 2.72-fold, 8 donors, q < 0.05: power {agg.at['per_cell', 'power']:.2f} vs "
+                 f"{agg.at['pseudobulk', 'power']:.2f},\nbut per-cell hit lists are "
                  f"{agg.at['per_cell', 'fdp']:.0%} false against "
-                 f"{agg.at['pseudobulk', 'fdp']:.0%} for pseudobulk")
+                 f"{agg.at['pseudobulk', 'fdp']:.0%}" + six_donor_clause)
     ax.title.set_fontsize(9.5)
     ax.legend(frameon=False, fontsize=8, loc="upper right")
     _panel_letter(ax, "B")
@@ -1100,7 +1110,7 @@ def fig_at_a_glance():
           "Wilson 95% CI; the 0.05 line is the exact-null reference, not a bound.\n"
           "source: results/sim_null.csv, false_positives.csv, sim_power.csv, "
           "mixed_vs_others_summary.csv, mixed_null_draws.csv, "
-          "nbglm_real_null_balanced.csv, nbglm_real_summary.csv")
+          "nbglm_real_null_balanced.csv, nbglm_real_summary.csv, sim_nbglm_summary.csv")
 
 
 FIGURES = {
