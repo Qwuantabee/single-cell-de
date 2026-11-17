@@ -1,5 +1,9 @@
 # Differential expression in single-cell data, tested at the right level
 
+[![tests](https://github.com/Qwuantabee/single-cell-de/actions/workflows/tests.yml/badge.svg)](https://github.com/Qwuantabee/single-cell-de/actions/workflows/tests.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Qwuantabee/single-cell-de/blob/main/LICENSE)
+[![python](https://img.shields.io/badge/python-3.10--3.12-blue.svg)](https://github.com/Qwuantabee/single-cell-de/blob/main/pyproject.toml)
+
 Treating every cell as a replicate is tempting, and this project measures what it costs. On simulated data where nothing changes between conditions, a per-cell Wilcoxon test called **73% of all genes significant** at a 5% false discovery rate; pseudobulk aggregation called none. The sections below repeat the test on real data, then hold two alternatives (a mixed model, a negative-binomial GLM) to the same standard.
 
 ## At a glance
