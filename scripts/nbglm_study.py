@@ -14,7 +14,8 @@ is the friendliest possible case for it; if it does not win here it will not
 win on real data either.
 
   4 donor counts x 10 replicates x 2 methods, 300 genes, 30 truly changed
-  with a log2 effect of 1.0 (2x). Both methods get the same pseudobulk
+  with a natural-log effect of 1.0 (2.72x, 1.44 log2; simulate.py applies
+  it inside exp, so it is not a log2 effect). Both methods get the same pseudobulk
   matrix, the same gene filter and the same BH correction.
 
 Reported per cell of the grid: mean observed FDP (false discovery proportion

@@ -210,7 +210,7 @@ def fig_power():
     n_genes = int((df["tp"] + df["fp"] + df["fn"] + df["tn"]).iloc[0])
     _save(fig, "power_vs_fdp.png",
           f"n = {df['rep'].nunique()} simulated replicates per method, {n_true} of "
-          f"{n_genes} genes given a real 2-fold effect (scripts/simulation_study.py), "
+          f"{n_genes} genes given a real 2.72-fold effect (natural-log 1.0) (scripts/simulation_study.py), "
           "BH q < 0.05; bars are means.\n"
           "source: results/sim_power.csv")
 
@@ -938,7 +938,7 @@ def fig_nbglm_sim():
     axes[1].legend(frameon=False, fontsize=8, loc="upper right")
     _save(fig, "nbglm_sim_power.png",
           f"n = {reps} simulated replicates per method and donor count (mean; power "
-          f"whiskers +/-1 SD, FDP means only); {n_tested} genes, {n_true} truly changed at log2 effect 1.0, BH "
+          f"whiskers +/-1 SD, FDP means only); {n_tested} genes, {n_true} truly changed at natural-log effect 1.0 (2.72x), BH "
           "alpha 0.05 (scripts/nbglm_study.py). SIMULATED: the generator draws negative-"
           "binomial counts, the GLM's own model, and the dispersion-trend floor was "
           "tuned on it, so this is the GLM's best case and not out-of-sample.\n"
