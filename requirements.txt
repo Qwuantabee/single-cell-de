@@ -1,4 +1,4 @@
-# Exact versions the full test suite (122 tests) and every script were verified
+# Exact versions the full test suite (124 tests) and every script were verified
 # with, on Python 3.12. Install with:
 #   pip install -r requirements.txt && pip install -e . --no-deps
 # pyproject.toml carries the looser lower bounds (also tested in CI on 3.10).

@@ -11,7 +11,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.12"]
+        include:
+          # oldest supported Python, resolved from the lower bounds in pyproject.toml
+          - python-version: "3.10"
+            install: bounds
+          # the exact environment the results were verified in (requirements.txt)
+          - python-version: "3.12"
+            install: pinned
 
     steps:
       - uses: actions/checkout@v4
@@ -21,18 +27,29 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: install
+      - name: install (lower bounds)
+        if: matrix.install == 'bounds'
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: install (pinned)
+        if: matrix.install == 'pinned'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e . --no-deps
+
       # The Kang 2018 dataset is not committed (it is a third-party download and
       # large), but this suite needs none of it: every test either simulates its
       # input or reads a committed results/ artefact. Measured on a checkout
-      # with no data/ at all: 122 passed, 0 skipped. If this step ever needs a
+      # with no data/ at all: 124 passed, 0 skipped. If this step ever needs a
       # skip switch, a test has quietly become data-dependent.
       - name: tests
         run: python -m pytest tests/ -q
+
+      - name: every README number matches its committed artefact
+        run: python scripts/audit_claims.py --strict
 
       - name: figures regenerate from committed artefacts
         # This script takes figure names as positional arguments and defaults to
