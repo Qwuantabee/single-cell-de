@@ -5,15 +5,20 @@ produces false positives, but it cannot show how many true positives each
 method finds, because in real data the truth is unknown.
 
 This simulator makes both measurable. Counts are drawn from a negative
-binomial, which is the standard model for RNA-seq overdispersion, with a
-per-donor random effect so that cells from the same donor are correlated.
-That correlation is the entire reason the per-cell test fails: it is what
-makes 1000 cells from one donor worth far less than 1000 cells from 1000
-donors, and the per-cell test assumes they are worth the same.
+binomial, which is the standard model for RNA-seq overdispersion, with two
+random effects: a per-donor shift shared by both of that donor's samples
+(donor_sd) and a per-(donor, condition) shift that is independent between
+the two samples (sample_sd).
 
-Setting donor_sd=0 removes the random effect and the per-cell test becomes
-valid again, which is a useful way to confirm the diagnosis rather than just
-observing the symptom.
+The per-cell test fails because of sample_sd, not donor_sd. A shift shared by
+both of a donor's samples cancels in the ctrl-vs-stim contrast; a shift that
+differs between them looks, to a test that counts every cell as a replicate,
+like a condition effect backed by hundreds of cells. Setting sample_sd=0
+(with the default donor_sd=0.5) brings the per-cell test back to 0 false
+positives of 500 null genes (results/sim_sample_sweep.csv, README section 3).
+An earlier version of this docstring named the donor correlation as the
+cause and donor_sd=0 as the fix; that was the first simulator's diagnosis,
+which the sample_sd sweep overturned.
 """
 
 import numpy as np
