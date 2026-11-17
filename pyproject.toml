@@ -15,6 +15,7 @@ dependencies = [
     "seaborn>=0.13",
     "scanpy>=1.10",
     "anndata>=0.10",
+    "statsmodels>=0.14",
     "requests>=2.31",
 ]
 
