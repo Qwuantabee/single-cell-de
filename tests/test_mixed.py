@@ -76,7 +76,7 @@ def test_null_pvalues_are_calibrated_not_just_below_a_ceiling():
     sensitive quantity: under an exact null a calibrated test puts 5% of
     genes below 0.05. With four donors (three df) the normal reference that
     statsmodels returns puts about 14% there, so this fails by a wide margin
-    on the bug fixed in 7f1e46d while a t(n_pairs-1) reference stays near 5%.
+    on the bug fixed in a1b1fc6 while a t(n_pairs-1) reference stays near 5%.
     """
     ps, calls = [], 0
     for seed in range(5):

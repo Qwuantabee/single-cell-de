@@ -30,13 +30,13 @@ Each is described in the section where it applies.
 
 | what was wrong | where | commit |
 |---|---|---|
-| Composition table had ctrl and stim swapped, so every sign was reversed | §7 | `6d5fb63` |
-| Null reference was 25 of 500 (uncorrected p) where BH expects about 0.05 of 500 | §1, §8 | `b72cde6`, `6f3e0fd` |
-| Mixed model reported 12–272× null inflation: a normal reference at 4–8 pairs, and unpaired profiles in the mixed arm | §8 | `7f1e46d`, `96f8026` |
-| GLM and pseudobulk log₂FC "agreed to three decimals" while on different normalisations | §9 | `8f09882` |
-| Nulls resampled plans that do not exist as distinct draws; GLM "calibrated" on one type and ten draws | §8, §9 | `eb13b69`, `4b90d2a` |
-| Simulated effect labelled 2-fold / log₂ 1.0; it is 1.0 on the natural-log scale (2.72-fold) | §2, docs/nb_glm.md | `5a6d99e`, `2ae8f56` |
-| Three result files no script writes or reads (`mixed_cd4.csv`, the CD4-only mixed run on the withdrawn normal reference, with p = 0 rows; `mixed_percell_cd4.csv`; `sim_donor_sweep.csv`) sat beside the corrected ones | `results/` | withdrawn from the tree in this revision; still in history at `8431d1c`, `d8fcc0d` |
+| Composition table had ctrl and stim swapped, so every sign was reversed | §7 | `7457617` |
+| Null reference was 25 of 500 (uncorrected p) where BH expects about 0.05 of 500 | §1, §8 | `7a4c002`, `ff6b4a2` |
+| Mixed model reported 12–272× null inflation: a normal reference at 4–8 pairs, and unpaired profiles in the mixed arm | §8 | `a1b1fc6`, `84de8aa` |
+| GLM and pseudobulk log₂FC "agreed to three decimals" while on different normalisations | §9 | `d401125` |
+| Nulls resampled plans that do not exist as distinct draws; GLM "calibrated" on one type and ten draws | §8, §9 | `85671a6`, `c08dc52` |
+| Simulated effect labelled 2-fold / log₂ 1.0; it is 1.0 on the natural-log scale (2.72-fold) | §2, docs/nb_glm.md | `ddff8e6`, `5f09958` |
+| Three result files no script writes or reads (`mixed_cd4.csv`, the CD4-only mixed run on the withdrawn normal reference, with p = 0 rows; `mixed_percell_cd4.csv`; `sim_donor_sweep.csv`) sat beside the corrected ones | `results/` | withdrawn from the tree in this revision; still in history at `9f33de4`, `d187ba6` |
 
 The simulator fix described under "How the simulation got fixed" and the first-version normalisation numbers in §4 predate the first commit, so they are narrated here and cannot be checked from the history.
 
@@ -114,7 +114,7 @@ Three "rank" definitions appear in this README and are not interchangeable; comp
 
 If the *mix* of cell types differs between conditions, a pooled comparison compares two cell mixtures, not two expression states: every marker of whichever type became more common comes out "up", with valid p-values, for a question nobody asked. On Kang the composition moves only slightly. Mean proportion ctrl → stim, with the log₂ ratio stim / ctrl: CD14+ monocytes 0.254 → 0.238 (−0.10), megakaryocytes 0.015 → 0.012 (−0.30), CD4 T 0.440 → 0.448 (+0.03), NK 0.067 → 0.068 (+0.01), B 0.097 → 0.102 (+0.07).
 
-The largest shift is 0.30 log₂ (1.2×) and a *decrease* (megakaryocytes, 1.51% → 1.22% of cells); CD14+ monocytes also fall, in 7 of 8 donors. Every sign is the reverse of an earlier version of this table, whose `mean_ctrl` and `mean_stim` columns had been read in the wrong order (commit `6d5fb63`). Interferon-β does not rearrange PBMC composition much, so this dataset is *not* the case where pooling fails for that reason; a disease contrast, where composition effects usually bite, would be.
+The largest shift is 0.30 log₂ (1.2×) and a *decrease* (megakaryocytes, 1.51% → 1.22% of cells); CD14+ monocytes also fall, in 7 of 8 donors. Every sign is the reverse of an earlier version of this table, whose `mean_ctrl` and `mean_stim` columns had been read in the wrong order (commit `7457617`). Interferon-β does not rearrange PBMC composition much, so this dataset is *not* the case where pooling fails for that reason; a disease contrast, where composition effects usually bite, would be.
 
 <details><summary>Sign convention</summary>
 
@@ -159,7 +159,7 @@ All 12 known ISGs are significant in all 7 testable types, but the programme's *
 
 ## 8. Mixed-effects models: the same test at 138–721× the cost
 
-The mixed model `expression ~ condition + (1 | donor)` on one pseudobulk profile per donor and condition is the paired t-test plus a donor variance component. On all seven cell types it gives identical effects and statistics wherever the donor variance is estimated, 1.02–1.09× the calls (80% of the extras on genes whose variance collapsed to zero), and the same false-positive count as pseudobulk in 220 of 220 balanced donor-swap draws. An earlier version of this section reported 12–272× null inflation; that was an implementation artefact and is withdrawn (commits `7f1e46d`, `96f8026`). A *per-cell* mixed model is not evaluated.
+The mixed model `expression ~ condition + (1 | donor)` on one pseudobulk profile per donor and condition is the paired t-test plus a donor variance component. On all seven cell types it gives identical effects and statistics wherever the donor variance is estimated, 1.02–1.09× the calls (80% of the extras on genes whose variance collapsed to zero), and the same false-positive count as pseudobulk in 220 of 220 balanced donor-swap draws. An earlier version of this section reported 12–272× null inflation; that was an implementation artefact and is withdrawn (commits `a1b1fc6`, `84de8aa`). A *per-cell* mixed model is not evaluated.
 
 ![boundary genes](figures/mixed_boundary_genes.png)
 

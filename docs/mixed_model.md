@@ -4,7 +4,7 @@ Back to the [README](../README.md). Section numbers (§1–§9) refer to the REA
 
 Pseudobulk is right about the degrees of freedom and wasteful about the cells. The mixed model here, `expression ~ condition + (1 | donor)` on one pseudobulk profile per donor and condition, is the paired t-test's model plus a donor variance component. A *per-cell* mixed model is not evaluated (below).
 
-**This section was rewritten twice, and the second time the headline reversed.** The first version ran on CD4 only. The second reported the mixed model 12–272× above the null expectation, worse with fewer donors: an implementation artefact (`statsmodels` takes Wald p-values from a *normal* reference, anti-conservative at 4–8 pairs, and the mixed arm used every donor's profile, not the paired donors pseudobulk uses; commits `7f1e46d`, `96f8026`). The numbers below use a t(n_pairs − 1) reference on the paired donors (`results/mixed_vs_others_summary.csv`); megakaryocytes stay excluded (§7).
+**This section was rewritten twice, and the second time the headline reversed.** The first version ran on CD4 only. The second reported the mixed model 12–272× above the null expectation, worse with fewer donors: an implementation artefact (`statsmodels` takes Wald p-values from a *normal* reference, anti-conservative at 4–8 pairs, and the mixed arm used every donor's profile, not the paired donors pseudobulk uses; commits `a1b1fc6`, `84de8aa`). The numbers below use a t(n_pairs − 1) reference on the paired donors (`results/mixed_vs_others_summary.csv`); megakaryocytes stay excluded (§7).
 
 <details><summary>Calls at BH q < 0.05, per cell type (table)</summary>
 

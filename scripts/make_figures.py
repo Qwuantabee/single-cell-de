@@ -698,7 +698,7 @@ def fig_log2fc_agreement():
     if after is None:
         return
     before = _maybe("nbglm_real_log2fc_before_fix.csv",
-                    "(committed copy of commit 1c0c940)", comment="#")
+                    "(committed copy of commit a5df676)", comment="#")
     isg = _maybe("nbglm_real_isg.csv", "scripts/nbglm_real.py")
     types = list(after["cell_type"])
     x = np.arange(len(types))
@@ -808,7 +808,7 @@ def fig_log2fc_agreement():
           f"gene fits. {pr}\n"
           "source: results/nbglm_real_summary.csv, "
           "results/nbglm_real_log2fc_before_fix.csv (verbatim columns of the same "
-          "file at commit 1c0c940), results/nbglm_real_isg.csv")
+          "file at commit a5df676), results/nbglm_real_isg.csv")
 
 
 def fig_megakaryocyte():
